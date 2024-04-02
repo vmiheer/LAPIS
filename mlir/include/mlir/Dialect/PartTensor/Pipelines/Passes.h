@@ -14,9 +14,10 @@
 #define MLIR_DIALECT_PARTTENSOR_PIPELINES_PASSES_H_
 
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+#include "mlir/Dialect/PartTensor/Transforms/Passes.h"
 #include "mlir/Pass/PassOptions.h"
 
-//for SparseParallelizationStrategy
+// for SparseParallelizationStrategy
 #include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
 
 using namespace mlir::detail;
@@ -35,7 +36,8 @@ struct SparseCompilerOptions
   // TODO(57514): These options are duplicated in Passes.td.
   PassOptions::Option<mlir::SparseParallelizationStrategy> parallelization{
       *this, "parallelization-strategy",
-      ::llvm::cl::desc("Set the parallelization strategy (default: parallelize every possible loop)"),
+      ::llvm::cl::desc("Set the parallelization strategy (default: parallelize "
+                       "every possible loop)"),
       ::llvm::cl::init(mlir::SparseParallelizationStrategy::kAnyStorageAnyLoop),
       llvm::cl::values(
           clEnumValN(mlir::SparseParallelizationStrategy::kNone, "none",
@@ -154,6 +156,17 @@ struct SparseCompilerOptions
       desc("Enables GPU acceleration by means of direct library calls (like "
            "cuSPARSE)")};
 
+  PassOptions::Option<mlir::part_tensor::PartTensorDistBackend>
+      partTensorBackend{
+          *this, "pt-backend",
+          ::llvm::cl::desc("Backend to use for part tensor communication"),
+          ::llvm::cl::init(mlir::part_tensor::PartTensorDistBackend::kNone),
+          llvm::cl::values(
+              clEnumValN(mlir::part_tensor::PartTensorDistBackend::kNone,
+                         "none", "Turn off part tensor distribution."),
+              clEnumValN(mlir::part_tensor::PartTensorDistBackend::kKRS, "krs",
+                         "Use Kokkos Remote Spaces."))};
+
   /// Projects out the options for `createSparsificationPass`.
   SparsificationOptions sparsificationOptions() const {
     return SparsificationOptions(parallelization, gpuDataTransfer,
@@ -186,7 +199,7 @@ struct SparseCompilerOptions
 
 /// Adds the "part-compiler" pipeline to the `OpPassManager`.
 void buildPartSparseCompiler(OpPassManager &pm,
-                         const SparseCompilerOptions &options);
+                             const SparseCompilerOptions &options);
 
 /// Registers all pipelines for the `sparse_tensor` dialect.  At present,
 /// this includes only "part-compiler".
