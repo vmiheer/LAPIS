@@ -53,7 +53,15 @@ static std::optional<Type> convertPartTensorTypes(Type type) {
 // Conversion rules.
 //===----------------------------------------------------------------------===//
 
+constexpr auto getBackendPrefix = [](mlir::PartTensorDistBackend backend) {
+  if (backend == PartTensorDistBackend::kNone) {
+    return std::string("");
+  }
+  return std::string("krs_");
+};
+
 /// Part conversion rule for position accesses.
+template <PartTensorDistBackend backend>
 class PartTensorGetPartitionsConverter
     : public OpConversionPattern<GetPartitionsOp> {
 public:
@@ -67,7 +75,8 @@ public:
     MemRefType callRetType = mlir::sparse_tensor::get1DMemRefType(crdTp, false);
     SmallVector<Value> operands{adaptor.getOperands()[0]};
     auto fn = mlir::sparse_tensor::getFunc(
-        op->getParentOfType<ModuleOp>(), "getPartitions", callRetType, operands,
+        op->getParentOfType<ModuleOp>(),
+        getBackendPrefix(backend) + "getPartitions", callRetType, operands,
         mlir::sparse_tensor::EmitCInterface::On);
     Value callRet =
         rewriter.create<func::CallOp>(loc, callRetType, fn, operands)
@@ -79,6 +88,7 @@ public:
   }
 };
 
+template <PartTensorDistBackend backend>
 class PartTensorGetSliceConverter : public OpConversionPattern<GetSliceOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -95,8 +105,9 @@ public:
     // with    %a1 = call @getSlice(%a) : (partTensor) -> i8*
     //         %a2 = unrealized_conversion_cast %a1 : i8* to %sparseTensor
     Value callRet =
-        createFuncCall(rewriter, loc, "getSlice", resType,
-                       adaptor.getOperands(), sparse_tensor::EmitCInterface::On)
+        createFuncCall(rewriter, loc, getBackendPrefix(backend) + "getSlice",
+                       resType, adaptor.getOperands(),
+                       sparse_tensor::EmitCInterface::On)
             .getResult(0);
     callRet =
         rewriter.create<UnrealizedConversionCastOp>(loc, origResType, callRet)
@@ -106,6 +117,7 @@ public:
   }
 };
 
+template <PartTensorDistBackend backend>
 class PartTensorGetNumPartitionsConverter
     : public OpConversionPattern<GetNumPartitionsOp> {
 public:
@@ -116,7 +128,8 @@ public:
     Type resType = op.getType();
     Location loc = op->getLoc();
     auto fn = mlir::sparse_tensor::getFunc(
-        op->getParentOfType<ModuleOp>(), "getNumPartitions", resType,
+        op->getParentOfType<ModuleOp>(),
+        getBackendPrefix(backend) + "getNumPartitions", resType,
         adaptor.getOperands(), mlir::sparse_tensor::EmitCInterface::On);
     Value callRet =
         rewriter.create<func::CallOp>(loc, resType, fn, adaptor.getOperands())
@@ -126,6 +139,7 @@ public:
   }
 };
 
+template <PartTensorDistBackend backend>
 class PartTensorSetSliceConverter : public OpConversionPattern<SetSliceOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -133,7 +147,7 @@ public:
   matchAndRewrite(SetSliceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    createFuncCall(rewriter, loc, "setSlice", {},
+    createFuncCall(rewriter, loc, getBackendPrefix(backend) + "setSlice", {},
                    {adaptor.getInPartTensor(), adaptor.getPartSpec(),
                     adaptor.getSparseTensor()},
                    mlir::sparse_tensor::EmitCInterface::On);
@@ -142,6 +156,7 @@ public:
   }
 };
 
+template <PartTensorDistBackend backend>
 class PartTensorUpdateSliceConverter
     : public OpConversionPattern<UpdateSliceOp> {
 public:
@@ -152,7 +167,7 @@ public:
     Location loc = op->getLoc();
     auto sparseTensor = adaptor.getSparseTensor();
     (void)sparseTensor;
-    createFuncCall(rewriter, loc, "updateSlice", {},
+    createFuncCall(rewriter, loc, getBackendPrefix(backend) + "updateSlice", {},
                    {adaptor.getInPartTensor(), adaptor.getPartSpec(),
                     adaptor.getSparseTensor()},
                    mlir::sparse_tensor::EmitCInterface::On);
@@ -179,19 +194,38 @@ mlir::PartTensorTypeToPtrConverter::PartTensorTypeToPtrConverter() {
 /// Populates the given patterns list with conversion rules required for
 /// the sparsification of linear algebra operations.
 void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
-                                                RewritePatternSet &patterns) {
-  patterns.add<PartTensorGetPartitionsConverter>(typeConverter,
-                                                 patterns.getContext());
+                                                RewritePatternSet &patterns,
+                                                PartTensorDistBackend backend) {
+  if (backend == PartTensorDistBackend::kNone) {
+    patterns
+        .add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kNone>>(
+            typeConverter, patterns.getContext());
+    patterns.add<PartTensorGetSliceConverter<PartTensorDistBackend::kNone>>(
+        typeConverter, patterns.getContext());
 
-  patterns.add<PartTensorGetSliceConverter>(typeConverter,
-                                            patterns.getContext());
+    patterns
+        .add<PartTensorGetNumPartitionsConverter<PartTensorDistBackend::kNone>>(
+            typeConverter, patterns.getContext());
 
-  patterns.add<PartTensorGetNumPartitionsConverter>(typeConverter,
-                                                    patterns.getContext());
+    patterns.add<PartTensorSetSliceConverter<PartTensorDistBackend::kNone>>(
+        typeConverter, patterns.getContext());
 
-  patterns.add<PartTensorSetSliceConverter>(typeConverter,
-                                            patterns.getContext());
+    patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kNone>>(
+        typeConverter, patterns.getContext());
+  } else {
+    patterns.add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kKRS>>(
+        typeConverter, patterns.getContext());
+    patterns.add<PartTensorGetSliceConverter<PartTensorDistBackend::kKRS>>(
+        typeConverter, patterns.getContext());
 
-  patterns.add<PartTensorUpdateSliceConverter>(typeConverter,
-                                               patterns.getContext());
+    patterns
+        .add<PartTensorGetNumPartitionsConverter<PartTensorDistBackend::kKRS>>(
+            typeConverter, patterns.getContext());
+
+    patterns.add<PartTensorSetSliceConverter<PartTensorDistBackend::kKRS>>(
+        typeConverter, patterns.getContext());
+
+    patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kKRS>>(
+        typeConverter, patterns.getContext());
+  }
 }

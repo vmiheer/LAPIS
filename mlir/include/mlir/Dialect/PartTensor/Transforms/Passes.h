@@ -23,12 +23,10 @@
 
 namespace mlir {
 
-namespace part_tensor {
 enum class PartTensorDistBackend {
   kNone, // serialize part tensor execution
   kKRS   // use kokkos remote spaces
 };
-} // namespace part_tensor
 
 #define GEN_PASS_DECL
 #include "mlir/Dialect/PartTensor/Transforms/Passes.h.inc"
@@ -44,9 +42,11 @@ public:
 };
 
 void populatePartTensorConversionPatterns(TypeConverter &typeConverter,
-                                          RewritePatternSet &patterns);
+                                          RewritePatternSet &patterns,
+                                          PartTensorDistBackend backend);
 
 std::unique_ptr<Pass> createPartTensorConversionPass();
+std::unique_ptr<Pass> createPartTensorConversionPass(PartTensorDistBackend);
 
 //===----------------------------------------------------------------------===//
 // Registration.

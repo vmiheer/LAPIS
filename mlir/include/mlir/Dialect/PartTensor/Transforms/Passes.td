@@ -28,7 +28,17 @@ def PartTensorConversionPass : Pass<"part-tensor-conversion", "ModuleOp"> {
     "scf::SCFDialect",
     "part_tensor::PartTensorDialect",
   ];
-  let options = [];
+  let options = [
+    Option<"partTensorDistBackend", "pt-backend", "mlir::PartTensorDistBackend",
+           "mlir::PartTensorDistBackend::kNone",
+           "Backend to use for part tensor communication",
+            [{llvm::cl::values(
+                clEnumValN(mlir::PartTensorDistBackend::kNone,
+                         "none", "Turn off part tensor distribution."),
+                clEnumValN(mlir::PartTensorDistBackend::kKRS, "krs",
+                         "Use Kokkos Remote Spaces.")
+             )}]>
+  ];
 }
 
 #endif // MLIR_DIALECT_PARTTENSOR_TRANSFORMS_PASSES

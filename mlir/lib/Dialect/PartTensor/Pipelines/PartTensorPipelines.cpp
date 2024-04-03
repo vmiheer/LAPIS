@@ -56,7 +56,7 @@ getBufferizationOptions(bool analysisOnly) {
 
 void mlir::part_tensor::buildPartSparseCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
-  pm.addPass(createPartTensorConversionPass());
+  pm.addPass(createPartTensorConversionPass(options.partTensorBackend));
   pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
   pm.addPass(createSparsificationAndBufferizationPass(
       getBufferizationOptions(options.testBufferizationAnalysisOnly),
