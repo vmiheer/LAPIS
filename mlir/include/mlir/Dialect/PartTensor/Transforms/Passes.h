@@ -25,6 +25,7 @@ namespace mlir {
 
 enum class PartTensorDistBackend {
   kNone, // serialize part tensor execution
+  kMPI,  // use MPI for part tensor execution
   kKRS   // use kokkos remote spaces
 };
 

@@ -35,6 +35,8 @@ def PartTensorConversionPass : Pass<"part-tensor-conversion", "ModuleOp"> {
             [{llvm::cl::values(
                 clEnumValN(mlir::PartTensorDistBackend::kNone,
                          "none", "Turn off part tensor distribution."),
+                clEnumValN(mlir::PartTensorDistBackend::kMPI, "mpi",
+                        "Use Mpi."),
                 clEnumValN(mlir::PartTensorDistBackend::kKRS, "krs",
                          "Use Kokkos Remote Spaces.")
              )}]>

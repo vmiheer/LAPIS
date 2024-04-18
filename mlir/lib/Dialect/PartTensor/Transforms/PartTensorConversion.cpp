@@ -54,10 +54,16 @@ static std::optional<Type> convertPartTensorTypes(Type type) {
 //===----------------------------------------------------------------------===//
 
 constexpr auto getBackendPrefix = [](mlir::PartTensorDistBackend backend) {
-  if (backend == PartTensorDistBackend::kNone) {
+  switch (backend) {
+  case PartTensorDistBackend::kNone:
     return std::string("");
+  case PartTensorDistBackend::kKRS:
+    return std::string("krs_");
+  case PartTensorDistBackend::kMPI:
+    return std::string("mpi_");
+  default:
+    llvm_unreachable("Unknown PartTensorDistBackend");
   }
-  return std::string("krs_");
 };
 
 /// Part conversion rule for position accesses.
@@ -196,7 +202,8 @@ mlir::PartTensorTypeToPtrConverter::PartTensorTypeToPtrConverter() {
 void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
                                                 RewritePatternSet &patterns,
                                                 PartTensorDistBackend backend) {
-  if (backend == PartTensorDistBackend::kNone) {
+  switch (backend) {
+  case PartTensorDistBackend::kNone: {
     patterns
         .add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kNone>>(
             typeConverter, patterns.getContext());
@@ -212,7 +219,8 @@ void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
 
     patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kNone>>(
         typeConverter, patterns.getContext());
-  } else {
+  } break;
+  case PartTensorDistBackend::kKRS: {
     patterns.add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kKRS>>(
         typeConverter, patterns.getContext());
     patterns.add<PartTensorGetSliceConverter<PartTensorDistBackend::kKRS>>(
@@ -227,5 +235,24 @@ void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
 
     patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kKRS>>(
         typeConverter, patterns.getContext());
+  } break;
+  case PartTensorDistBackend::kMPI: {
+    patterns.add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kMPI>>(
+        typeConverter, patterns.getContext());
+    patterns.add<PartTensorGetSliceConverter<PartTensorDistBackend::kMPI>>(
+        typeConverter, patterns.getContext());
+
+    patterns
+        .add<PartTensorGetNumPartitionsConverter<PartTensorDistBackend::kMPI>>(
+            typeConverter, patterns.getContext());
+
+    patterns.add<PartTensorSetSliceConverter<PartTensorDistBackend::kMPI>>(
+        typeConverter, patterns.getContext());
+
+    patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kMPI>>(
+        typeConverter, patterns.getContext());
+  } break;
+  default:
+    llvm_unreachable("Unknown PartTensorDistBackend");
   }
 }
