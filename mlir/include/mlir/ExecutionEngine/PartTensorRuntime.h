@@ -40,8 +40,6 @@
 
 #define MEMREF_GET_PAYLOAD(MEMREF) ((MEMREF)->data + (MEMREF)->offset)
 
-using namespace mlir::part_tensor;
-
 namespace mlir {
 namespace part_tensor {
 /// Initializes the memref with the provided size and data pointer.  This

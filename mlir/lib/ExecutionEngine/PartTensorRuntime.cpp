@@ -62,6 +62,7 @@
 #include <cstring>
 #include <numeric>
 
+using namespace mlir::part_tensor;
 using namespace mlir::sparse_tensor;
 
 //===----------------------------------------------------------------------===//
