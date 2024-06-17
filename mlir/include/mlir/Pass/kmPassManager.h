@@ -1,4 +1,4 @@
-//===- PassManager.h - Pass Management Interface ----------------*- C++ -*-===//
+//===- kmPassManager.h - Pass Management Interface ----------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_PASS_PASSMANAGER_H
-#define MLIR_PASS_PASSMANAGER_H
+#ifndef KOKKOS_MLIR_PASS_PASSMANAGER_H
+#define KOKKOS_MLIR_PASS_PASSMANAGER_H
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OperationSupport.h"
@@ -479,4 +479,4 @@ void applyDefaultTimingPassManagerCLOptions(PassManager &pm);
 
 } // namespace mlir
 
-#endif // MLIR_PASS_PASSMANAGER_H
+#endif // KOKKOS_MLIR_PASS_PASSMANAGER_H

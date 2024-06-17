@@ -11,33 +11,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_INITALLTRANSLATIONS_H
-#define MLIR_INITALLTRANSLATIONS_H
+#ifndef KOKKOS_MLIR_INITALLTRANSLATIONS_H
+#define KOKKOS_MLIR_INITALLTRANSLATIONS_H
+
+#include "mlir/InitAllTranslations.h"
 
 namespace mlir {
 
-void registerFromLLVMIRTranslation();
-void registerFromSPIRVTranslation();
-void registerToCppTranslation();
 void registerToKokkosTranslation();
-void registerToLLVMIRTranslation();
-void registerToSPIRVTranslation();
 
 // This function should be called before creating any MLIRContext if one
 // expects all the possible translations to be made available to the context
 // automatically.
-inline void registerAllTranslations() {
+inline void registerAllKokkosTranslations() {
+  registerAllTranslations();
   static bool initOnce = []() {
-    registerFromLLVMIRTranslation();
-    registerFromSPIRVTranslation();
-    registerToCppTranslation();
     registerToKokkosTranslation();
-    registerToLLVMIRTranslation();
-    registerToSPIRVTranslation();
     return true;
   }();
   (void)initOnce;
 }
 } // namespace mlir
 
-#endif // MLIR_INITALLTRANSLATIONS_H
+#endif // KOKKOS_MLIR_INITALLTRANSLATIONS_H

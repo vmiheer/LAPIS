@@ -18,7 +18,7 @@
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
-#include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
+#include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -33,7 +33,7 @@ namespace mlir {
 #define GEN_PASS_DEF_SPARSEGPUCODEGEN
 #define GEN_PASS_DEF_SPARSEKOKKOSCODEGEN
 #define GEN_PASS_DEF_STORAGESPECIFIERTOLLVM
-#include "mlir/Dialect/SparseTensor/Transforms/Passes.h.inc"
+#include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h.inc"
 } // namespace mlir
 
 using namespace mlir;

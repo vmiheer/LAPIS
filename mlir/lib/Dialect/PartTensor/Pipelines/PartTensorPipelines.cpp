@@ -22,8 +22,8 @@
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
-#include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
-#include "mlir/Pass/PassManager.h"
+#include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h"
+#include "mlir/Pass/kmPassManager.h"
 #include "mlir/Transforms/Passes.h"
 
 using namespace mlir;

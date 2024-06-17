@@ -1651,12 +1651,12 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, scf::ParallelOp o
   if(isReduction)
   {
     //Loop over the parallel body to get information about the reduction types
-    Region& body = op.getRegion();
+    //Region& body = op.getRegion();
 
     for (auto reduce : op.getOps<scf::ReduceOp>())
     {
-      Type type = reduce.getOperand().getType();
-      Block &reduction = reduce.getRegion().front();
+      //Type type = reduce.getOperand().getType();
+      //Block &reduction = reduce.getRegion().front();
       
       emitter << ", ";
 

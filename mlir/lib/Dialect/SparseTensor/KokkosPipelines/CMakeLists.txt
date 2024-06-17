@@ -16,7 +16,7 @@ SparseTensorKokkosPipelines.cpp
   MLIRMathToLibm
   MLIRMathToLLVM
   MLIRMemRefToLLVM
-  MLIRPass
+  MLIRKokkosPass
   MLIRReconcileUnrealizedCasts
   MLIRSCFToControlFlow
   MLIRSparseTensorDialect

@@ -14,7 +14,7 @@
 #define MLIR_DIALECT_PARTTENSOR_PIPELINES_PASSES_H_
 
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
-#include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
+#include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h"
 #include "mlir/Pass/PassOptions.h"
 
 using namespace mlir::detail;
