@@ -43,6 +43,6 @@ c[i] = A[i,j] * b[j]
 # Perform the SpMV computation and write the result to file
 with tempfile.TemporaryDirectory() as test_dir:
   print("Compiling, running spmv and writing result to c.tns")
-  #ptio.write_kokkos("c.tns", c, "parallelization-strategy=none")
+  ptio.write_kokkos("c.tns", c, "parallelization-strategy=none")
 
-#shutil.copyfile("mlir_kokkos/mlir_kokkos_module.cpp", "mlir_kokkos/mlir_kokkos_module_1.cpp")
+shutil.copyfile("mlir_kokkos/mlir_kokkos_module.cpp", "mlir_kokkos/mlir_kokkos_module_1.cpp")
