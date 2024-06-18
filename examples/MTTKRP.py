@@ -12,7 +12,7 @@ from tools import mlir_pytaco_api as pt
 from tools import mlir_pytaco_io as ptio
 from tools import testing_utils as utils
 
-from torch_mlir_e2e_test.linalg_kokkos_backend import KokkosBackend
+from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
 
 
 _DATA_PATH = os.path.dirname(os.path.abspath("../llvm-project/mlir/test/Integration/Dialect/SparseTensor/taco/data/"))

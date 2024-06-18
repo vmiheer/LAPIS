@@ -45,7 +45,7 @@ from mlir.dialects.linalg.opdsl import lang
 from . import mlir_pytaco_utils as utils
 
 # Import Kokkos pipeline
-from torch_mlir_e2e_test.linalg_kokkos_backend import KokkosBackend
+from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
 
 # TACO naming prefixes.
 _TACO_INDEX_PREFIX = "i"
