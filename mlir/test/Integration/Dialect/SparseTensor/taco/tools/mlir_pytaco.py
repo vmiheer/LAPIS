@@ -30,17 +30,17 @@ import os
 import threading
 
 # Import MLIR related modules.
-from mlir import execution_engine
-from mlir import ir
-from mlir import runtime
-from mlir.dialects import arith
-from mlir.dialects import bufferization
-from mlir.dialects import builtin
-from mlir.dialects import func
-from mlir.dialects import linalg
-from mlir.dialects import sparse_tensor
-from mlir.dialects import tensor
-from mlir.dialects.linalg.opdsl import lang
+from kokkos_mlir import execution_engine
+from kokkos_mlir import ir
+from kokkos_mlir import runtime
+from kokkos_mlir.dialects import arith
+from kokkos_mlir.dialects import bufferization
+from kokkos_mlir.dialects import builtin
+from kokkos_mlir.dialects import func
+from kokkos_mlir.dialects import linalg
+from kokkos_mlir.dialects import sparse_tensor
+from kokkos_mlir.dialects import tensor
+from kokkos_mlir.dialects.linalg.opdsl import lang
 
 from . import mlir_pytaco_utils as utils
 

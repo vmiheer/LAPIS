@@ -11,12 +11,12 @@ import subprocess
 from io import StringIO
 import tempfile
 
-from torch_mlir.ir import *
-from torch_mlir.passmanager import *
-from torch_mlir.runtime import *
+from kokkos_mlir.ir import *
+from kokkos_mlir.passmanager import *
+from kokkos_mlir.runtime import *
 # Imported for side effects.
-import torch_mlir.all_passes_registration
-import torch_mlir.dialects.torch
+import kokkos_mlir.all_passes_registration
+import kokkos_mlir.dialects.torch
 
 from .abc import LinalgKokkosBackend
 

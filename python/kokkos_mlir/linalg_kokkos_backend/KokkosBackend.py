@@ -13,8 +13,8 @@ import tempfile
 
 from tools import mlir_pytaco_api as pt
 from tools import mlir_pytaco
-from mlir import ir
-from mlir import passmanager
+from kokkos_mlir import ir
+from kokkos_mlir import passmanager
 
 from .abc import LinalgKokkosBackend
 
