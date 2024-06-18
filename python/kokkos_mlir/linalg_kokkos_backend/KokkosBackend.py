@@ -11,17 +11,10 @@ import subprocess
 from io import StringIO
 import tempfile
 
-from torch_mlir.ir import *
-from torch_mlir.passmanager import *
-from torch_mlir.runtime import *
-
 from tools import mlir_pytaco_api as pt
 from tools import mlir_pytaco
 from mlir import ir
 from mlir import passmanager
-
-# Imported for side effects.
-import torch_mlir.dialects.torch
 
 from .abc import LinalgKokkosBackend
 
@@ -145,7 +138,7 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         mlir_kokkos = __import__(self.package_name)
         return mlir_kokkos.MLIRKokkosModule(buildDir + "/lib" + self.package_name + "_module.so")
 
-    def compile(self, module: Module):
+    def compile(self, module):
         """Compiles an imported module, with a flat list of functions.
         The module is expected to be in linalg-on-tensors + scalar code form.
         TODO: More clearly define the backend contract. Generally this will

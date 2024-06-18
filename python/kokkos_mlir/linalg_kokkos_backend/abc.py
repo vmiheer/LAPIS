@@ -6,10 +6,6 @@
 import abc
 from typing import TypeVar
 
-import torch
-
-from torch_mlir.ir import Module
-
 # A type shared between the result of `LinalgOnTensorsBackend.compile` and the
 # input to `LinalgOnTensorsBackend.load`. Each backend will likely have a
 # different definition of this type.
@@ -28,7 +24,7 @@ class LinalgKokkosBackend(abc.ABC):
     ideally with easy reproduction instructions.
     """
     @abc.abstractmethod
-    def compile(self, module: Module) -> CompiledArtifact:
+    def compile(self, module) -> CompiledArtifact:
         """Compile the provided MLIR module into a compiled artifact.
 
         The module adheres to the linalg-on-tensors backend contract
