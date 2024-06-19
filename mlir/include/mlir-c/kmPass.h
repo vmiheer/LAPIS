@@ -21,10 +21,12 @@ extern "C" {
 #endif
 
 
-MLIR_CAPI_EXPORTED MlirLogicalResult
+//MLIR_CAPI_EXPORTED 
+MlirLogicalResult
 mlirPassManagerEmitKokkos(MlirPassManager passManager, MlirModule module, const char* cxxSourceFile, const char* pySourceFile);
 
-MLIR_CAPI_EXPORTED MlirLogicalResult
+//MLIR_CAPI_EXPORTED 
+MlirLogicalResult
 mlirPassManagerEmitKokkosSparse(MlirPassManager passManager, MlirModule module, const char* cxxSourceFile, const char* pySourceFile, bool useHierarchical, bool isLastKernel);
 
 #ifdef __cplusplus

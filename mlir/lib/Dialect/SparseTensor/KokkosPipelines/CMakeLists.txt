@@ -24,4 +24,5 @@ SparseTensorKokkosPipelines.cpp
   MLIRTensorTransforms
   MLIRVectorToLLVM
   MLIRVectorTransforms
+  Kokkos_MLIRSparseTensorTransforms
 )

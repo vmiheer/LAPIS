@@ -12,7 +12,7 @@ import os
 
 # Import MLIR related modules.
 from kokkos_mlir import execution_engine
-from kokkos_mlir import ir
+from kokkos_mlir._mlir_libs._mlir import ir
 from kokkos_mlir import runtime
 from kokkos_mlir.dialects import sparse_tensor
 

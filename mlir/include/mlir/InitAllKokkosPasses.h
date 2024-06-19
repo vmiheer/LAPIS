@@ -14,7 +14,8 @@
 #ifndef KOKKOS_MLIR_INITALLPASSES_H_
 #define KOKKOS_MLIR_INITALLPASSES_H_
 
-#include "mlir/include/mlir/InitAllPasses.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Dialect/SparseTensor/Pipelines/kmPasses.h"
 
 
 namespace mlir {

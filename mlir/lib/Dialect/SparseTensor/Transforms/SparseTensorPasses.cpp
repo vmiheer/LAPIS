@@ -366,103 +366,11 @@ struct StorageSpecifierToLLVMPass
 
 } // namespace
 
-//===----------------------------------------------------------------------===//
-// Strategy flag methods.
-//===----------------------------------------------------------------------===//
-
-SparseToSparseConversionStrategy
-mlir::sparseToSparseConversionStrategy(int32_t flag) {
-  switch (flag) {
-  default:
-    return SparseToSparseConversionStrategy::kAuto;
-  case 1:
-    return SparseToSparseConversionStrategy::kViaCOO;
-  case 2:
-    return SparseToSparseConversionStrategy::kDirect;
-  }
-}
 
 //===----------------------------------------------------------------------===//
 // Pass creation methods.
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<Pass> mlir::createPreSparsificationRewritePass() {
-  return std::make_unique<PreSparsificationRewritePass>();
-}
-
-std::unique_ptr<Pass> mlir::createSparsificationPass() {
-  return std::make_unique<SparsificationPass>();
-}
-
-std::unique_ptr<Pass>
-mlir::createSparsificationPass(const SparsificationOptions &options) {
-  return std::make_unique<SparsificationPass>(options);
-}
-
-std::unique_ptr<Pass> mlir::createPostSparsificationRewritePass() {
-  return std::make_unique<PostSparsificationRewritePass>();
-}
-
-std::unique_ptr<Pass>
-mlir::createPostSparsificationRewritePass(bool enableRT, bool enableForeach,
-                                          bool enableConvert) {
-  return std::make_unique<PostSparsificationRewritePass>(
-      enableRT, enableForeach, enableConvert);
-}
-
-std::unique_ptr<Pass> mlir::createSparseTensorConversionPass() {
-  return std::make_unique<SparseTensorConversionPass>();
-}
-
-std::unique_ptr<Pass> mlir::createSparseTensorConversionPass(
-    const SparseTensorConversionOptions &options) {
-  return std::make_unique<SparseTensorConversionPass>(options);
-}
-
-std::unique_ptr<Pass> mlir::createSparseTensorCodegenPass() {
-  return std::make_unique<SparseTensorCodegenPass>();
-}
-
-std::unique_ptr<Pass>
-mlir::createSparseTensorCodegenPass(bool createSparseDeallocs,
-                                    bool enableBufferInitialization) {
-  return std::make_unique<SparseTensorCodegenPass>(createSparseDeallocs,
-                                                   enableBufferInitialization);
-}
-
-std::unique_ptr<Pass> mlir::createSparseBufferRewritePass() {
-  return std::make_unique<SparseBufferRewritePass>();
-}
-
-std::unique_ptr<Pass>
-mlir::createSparseBufferRewritePass(bool enableBufferInitialization) {
-  return std::make_unique<SparseBufferRewritePass>(enableBufferInitialization);
-}
-
-std::unique_ptr<Pass> mlir::createSparseVectorizationPass() {
-  return std::make_unique<SparseVectorizationPass>();
-}
-
-std::unique_ptr<Pass>
-mlir::createSparseVectorizationPass(unsigned vectorLength,
-                                    bool enableVLAVectorization,
-                                    bool enableSIMDIndex32) {
-  return std::make_unique<SparseVectorizationPass>(
-      vectorLength, enableVLAVectorization, enableSIMDIndex32);
-}
-
-std::unique_ptr<Pass> mlir::createSparseGPUCodegenPass() {
-  return std::make_unique<SparseGPUCodegenPass>();
-}
-
-std::unique_ptr<Pass> mlir::createSparseGPUCodegenPass(unsigned numThreads) {
-  return std::make_unique<SparseGPUCodegenPass>(numThreads);
-}
-
 std::unique_ptr<Pass> mlir::createSparseKokkosCodegenPass() {
   return std::make_unique<SparseKokkosCodegenPass>();
-}
-
-std::unique_ptr<Pass> mlir::createStorageSpecifierToLLVMPass() {
-  return std::make_unique<StorageSpecifierToLLVMPass>();
 }

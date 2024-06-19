@@ -11,10 +11,12 @@ import subprocess
 from io import StringIO
 import tempfile
 
-from tools import mlir_pytaco_api as pt
-from tools import mlir_pytaco
-from kokkos_mlir import ir
-from kokkos_mlir import passmanager
+from .._mlir_libs._kokkosMlir import register_dialect
+
+from kokkos_mlir.tools import mlir_pytaco_api as pt
+from kokkos_mlir.tools import mlir_pytaco
+from kokkos_mlir._mlir_libs._mlir import ir
+from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
 
 from .abc import LinalgKokkosBackend
 
@@ -136,7 +138,10 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         print("Importing module...")
         sys.path.insert(0, moduleRoot)
         mlir_kokkos = __import__(self.package_name)
-        return mlir_kokkos.MLIRKokkosModule(buildDir + "/lib" + self.package_name + "_module.so")
+        if os.path.isfile(buildDir + "/lib" + self.package_name + "_module.so"):
+            return mlir_kokkos.MLIRKokkosModule(buildDir + "/lib" + self.package_name + "_module.so")
+        if os.path.isfile(buildDir + "/lib" + self.package_name + "_module.dylib"):
+            return mlir_kokkos.MLIRKokkosModule(buildDir + "/lib" + self.package_name + "_module.dylib")
 
     def compile(self, module):
         """Compiles an imported module, with a flat list of functions.

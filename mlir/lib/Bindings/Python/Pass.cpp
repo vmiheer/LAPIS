@@ -10,7 +10,7 @@
 
 #include "IRModule.h"
 #include "mlir-c/Bindings/Python/Interop.h"
-#include "mlir-c/Pass.h"
+#include "mlir-c/kmPass.h"
 
 namespace py = pybind11;
 using namespace mlir;

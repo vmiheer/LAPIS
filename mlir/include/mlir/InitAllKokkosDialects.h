@@ -14,7 +14,8 @@
 #ifndef KOKKOS_MLIR_INITALLDIALECTS_H_
 #define KOKKOS_MLIR_INITALLDIALECTS_H_
 
-#include "mlir/include/mlir/InitAllDialects.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/Dialect/PartTensor/IR/PartTensor.h"
 
 namespace mlir {
 

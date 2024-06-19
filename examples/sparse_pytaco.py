@@ -9,13 +9,11 @@ import tempfile
 _SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(_SCRIPT_PATH)
 
-from tools import mlir_pytaco_api as pt
-from tools import mlir_pytaco_io as ptio
-from tools import testing_utils as utils
+from kokkos_mlir.tools import mlir_pytaco_api as pt
+from kokkos_mlir.tools import mlir_pytaco_io as ptio
+from kokkos_mlir.tools import testing_utils as utils
 
 from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
-
-from mlir import passmanager
 
 
 def main():

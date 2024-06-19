@@ -9,6 +9,9 @@
 #ifndef KOKKOS_MLIR_PASS_PASSMANAGER_H
 #define KOKKOS_MLIR_PASS_PASSMANAGER_H
 
+// Temporary fix, we do not want to include PassManager.h from upstream LLVM
+#define MLIR_PASS_PASSMANAGER_H
+
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Support/LogicalResult.h"

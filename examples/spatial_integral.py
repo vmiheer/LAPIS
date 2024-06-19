@@ -10,8 +10,8 @@ import math
 _SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(_SCRIPT_PATH)
 
-from tools import mlir_pytaco_api as pt
-from tools import testing_utils as utils
+from kokkos_mlir.tools import mlir_pytaco_api as pt
+from kokkos_mlir.tools import testing_utils as utils
 
 ###### This PyTACO part is taken from the TACO open-source project. ######
 # See http://tensor-compiler.org/docs/scientific_computing/index.html.

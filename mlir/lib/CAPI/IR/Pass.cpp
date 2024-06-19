@@ -6,13 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir-c/Pass.h"
+#include "mlir-c/kmPass.h"
+#include "mlir/Pass/kmPassManager.h"
 
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Pass.h"
 #include "mlir/CAPI/Support.h"
 #include "mlir/CAPI/Utils.h"
-#include "mlir/Pass/kmPassManager.h"
 #include <optional>
 
 using namespace mlir;

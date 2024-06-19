@@ -7,8 +7,8 @@
 #  solution.
 
 from kokkos_mlir import execution_engine
-from kokkos_mlir import ir
-from kokkos_mlir import passmanager
+from kokkos_mlir._mlir_libs._mlir import ir
+from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
 from typing import Sequence
 
 
