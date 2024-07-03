@@ -14,17 +14,20 @@ from torchvision import transforms
 
 import torch_mlir
 from torch_mlir_e2e_test.linalg_on_tensors_backends import refbackend
-from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
+#from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
 
 from timeit import default_timer as timer
 
-def load_and_preprocess_image(url: str):
-    headers = {
-        'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
-    }
-    img = Image.open(requests.get(url, headers=headers,
-                                  stream=True).raw).convert("RGB")
+def load_and_preprocess_image(input: str, useFile = True):
+    if useFile:
+        img = Image.open(input).convert("RGB")
+    else:
+        headers = {
+            'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
+        }
+        img = Image.open(requests.get(input, headers=headers,
+                                    stream=True).raw).convert("RGB")
     # preprocessing pipeline
     preprocess = transforms.Compose([
         transforms.Resize(256),
@@ -80,9 +83,10 @@ def predictions(torch_func, jit_func, kokkos_func, img, labels):
     #print(top3)
 
 image_url = "https://upload.wikimedia.org/wikipedia/commons/2/26/YellowLabradorLooking_new.jpg"
+filename = "YellowLabradorLooking_new.jpg"
 
-print("load image from " + image_url, file=sys.stderr)
-img = load_and_preprocess_image(image_url)
+print("load image from " + filename, file=sys.stderr)
+img = load_and_preprocess_image(filename)
 labels = load_labels()
 
 resnet18 = models.resnet18(pretrained=True)
@@ -92,15 +96,20 @@ backend = refbackend.RefBackendLinalgOnTensorsBackend()
 compiled = backend.compile(module)
 jit_module = backend.load(compiled)
 
+raw_pred = resnet18.forward(img)
+print("Gold Top-3 probs: ", raw_pred[0][208], ", ", raw_pred[0][207], ", ", raw_pred[0][176])
+raw_pred = torch.from_numpy(jit_module.forward(img.numpy()))
+print("Gold Top-3 probs: ", raw_pred[0][208], ", ", raw_pred[0][207], ", ", raw_pred[0][176])
+
 #
 #predictions(resnet18.forward, jit_module.forward, img, labels)
 
 # Compile module to mid-level MLIR (lower from linalg/tensor to memrefs, parallel for, arithmetic)
 
-kModule = torch_mlir.compile(resnet18, torch.ones(1, 3, 224, 224), output_type=torch_mlir.OutputType.LINALG_ON_TENSORS)
-kBackend = KokkosBackend.KokkosBackendLinalgOnTensorsBackend()
-kCompiledModule = kBackend.compile(kModule)
-predictions(resnet18.forward, jit_module.forward, kCompiledModule.forward, img, labels)
+#kModule = torch_mlir.compile(resnet18, torch.ones(1, 3, 224, 224), output_type=torch_mlir.OutputType.LINALG_ON_TENSORS)
+#kBackend = KokkosBackend.KokkosBackendLinalgOnTensorsBackend()
+#kCompiledModule = kBackend.compile(kModule)
+#predictions(resnet18.forward, jit_module.forward, kCompiledModule.forward, img, labels)
 
 #print("Dump of Kokkos module:")
 #kCompiled.dump()
