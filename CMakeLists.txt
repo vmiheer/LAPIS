@@ -98,3 +98,6 @@ add_definitions(${LLVM_DEFINITIONS})
 add_subdirectory(mlir)
 add_subdirectory(python)
 
+enable_testing()
+add_subdirectory(tests)
+
