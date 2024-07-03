@@ -8,7 +8,8 @@
 
 from kokkos_mlir import execution_engine
 from kokkos_mlir._mlir_libs._mlir import ir
-from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
+#from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
+from kokkos_mlir.passmanager import *
 from typing import Sequence
 
 
@@ -27,7 +28,8 @@ class SparseCompiler:
 
     def compile(self, module: ir.Module):
         """Compiles the module by invoking the sparse copmiler pipeline."""
-        passmanager.PassManager.parse(self.pipeline).run(module.operation)
+        with module.context:
+            PassManager.parse(self.pipeline).run(module.operation)
 
     def jit(self, module: ir.Module) -> execution_engine.ExecutionEngine:
         """Wraps the module in a JIT execution engine."""
