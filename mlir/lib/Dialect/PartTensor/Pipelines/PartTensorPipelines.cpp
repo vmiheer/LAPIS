@@ -124,4 +124,5 @@ void mlir::part_tensor::registerPartTensorPipelines() {
       " part-tensor type, and lowering it to LLVM IR with concrete"
       " representations and algorithms for sparse tensors.",
       buildSparseCompiler);
+  std::cout << "registerSparseTensorKokkosPipelines called" <<std::endl;
 }

@@ -4,6 +4,8 @@
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 
 void kokkosMlirRegisterAllPasses() {
+  std::cout << " registerAllKokkosPasses2 called "<< std::endl;
+
   mlir::registerAllKokkosPasses();
 }
 

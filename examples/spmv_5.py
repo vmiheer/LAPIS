@@ -9,6 +9,18 @@ import shutil
 _SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(_SCRIPT_PATH)
 
+print("a")
+
+from mlir import ir
+
+print("b")
+
+from mlir import passmanager
+
+#import kokkos_mlir
+import kokkos_mlir._mlir_libs._kokkosMlir
+print("c")
+
 from kokkos_mlir.tools import mlir_pytaco_api as pt
 from kokkos_mlir.tools import mlir_pytaco_io as ptio
 from kokkos_mlir.tools import testing_utils as utils

@@ -9,6 +9,7 @@
 #include "mlir/InitAllKokkosPasses.h"
 
 void kokkosMlirRegisterAllPasses() {
+  std::cout << " registerAllKokkosPasses1 called "<< std::endl;
   mlir::registerAllKokkosPasses();
 }
 

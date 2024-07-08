@@ -12,9 +12,17 @@ import torch
 import torchvision.models as models
 from torchvision import transforms
 
+print("a")
 import torch_mlir
+print("b")
 from torch_mlir_e2e_test.linalg_on_tensors_backends import refbackend
+print("c")
 #from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
+#from kokkos_mlir._mlir_libs._mlir import ir
+
+
+from mlir import passmanager
+from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
 
 from timeit import default_timer as timer
 

@@ -101,6 +101,7 @@ function(kokkos_mlir_target_includes target)
 endfunction()
 
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
+link_directories(${LLVM_INCLUDE_DIRS}/../python_packages/mlir_core/mlir/_mlir_libs)
 add_definitions(${LLVM_DEFINITIONS})
 
 add_subdirectory(mlir)

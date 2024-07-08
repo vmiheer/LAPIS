@@ -6,10 +6,9 @@
 #  test/Integration/Dialect/SparseTensor/python/ until we have a better
 #  solution.
 
-from kokkos_mlir import execution_engine
-from kokkos_mlir._mlir_libs._mlir import ir
-#from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
-from kokkos_mlir.passmanager import *
+from mlir import execution_engine
+from mlir import ir
+from mlir.passmanager import *
 from typing import Sequence
 
 

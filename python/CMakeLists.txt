@@ -74,9 +74,9 @@ set(_source_components
   # the only way to handle that is to create a separate mlir python package
   # tree, which seems excessive.
   KokkosMLIRPythonSources
-  MLIRPythonSources
-  MLIRPythonExtension.Core
-  MLIRPythonExtension.RegisterEverything
+  #MLIRPythonSources
+  #MLIRPythonExtension.Core
+  #MLIRPythonExtension.RegisterEverything
   KokkosMLIRPythonExtensions
 )
 

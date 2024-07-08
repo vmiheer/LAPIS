@@ -22,7 +22,7 @@ namespace mlir {
 
 
 inline void registerAllKokkosPasses() {
-
+  std::cout << " registerAllKokkosPasses called "<< std::endl;
   // Dialect pipelines
   sparse_tensor::registerSparseTensorKokkosPipelines();
 }

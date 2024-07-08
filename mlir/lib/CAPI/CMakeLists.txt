@@ -14,5 +14,7 @@ add_mlir_public_c_api_library(KokkosMLIRCAPI
   MLIRSparseTensorKokkosPipelines
 )
 
+target_link_libraries(KokkosMLIRCAPI PUBLIC MLIRPythonCAPI)
+
 kokkos_mlir_target_includes(KokkosMLIRCAPI)
 add_subdirectory(IR)

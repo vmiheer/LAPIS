@@ -62,6 +62,7 @@ void mlir::sparse_tensor::buildSparseKokkosCompiler(
 //===----------------------------------------------------------------------===//
 
 void mlir::sparse_tensor::registerSparseTensorKokkosPipelines() {
+  std::cout << "registerSparseTensorKokkosPipelines called" <<std::endl;
   PassPipelineRegistration<SparseCompilerOptions>(
       "sparse-compiler-kokkos",
       "The standard pipeline for taking sparsity-agnostic IR using the"

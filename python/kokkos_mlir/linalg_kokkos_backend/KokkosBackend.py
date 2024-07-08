@@ -11,12 +11,12 @@ import subprocess
 from io import StringIO
 import tempfile
 
-from .._mlir_libs._kokkosMlir import register_dialect
+#from .._mlir_libs._kokkosMlir import register_dialect
 
 from kokkos_mlir.tools import mlir_pytaco_api as pt
 from kokkos_mlir.tools import mlir_pytaco
-from kokkos_mlir._mlir_libs._mlir import ir
-from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
+from mlir import ir
+from mlir.passmanager import *
 
 from .abc import LinalgKokkosBackend
 
@@ -161,7 +161,7 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         asm_for_error_report = module.operation.get_asm(
             large_elements_limit=10, enable_debug_info=True)
         # Lower module in place to make it ready for compiler backends.
-        with module.context:
+        with ir.Context():
             pm = PassManager.parse(LOWERING_PIPELINE)
             pm.run(module.operation)
             if self.dump_mlir:
@@ -204,7 +204,7 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         else:
             useHierarchical = False
         pipeline = f'builtin.module(sparse-compiler-kokkos{{{options} reassociate-fp-reductions=1 enable-index-optimizations=1}})'
-        pm = passmanager.PassManager.parse(pipeline, context=module.context)
+        pm = PassManager.parse(pipeline, context=module.context)
         pm.run(module.operation)
         if self.dump_mlir:
             with open(self.before_mlir_filename, 'w') as f:
