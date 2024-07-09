@@ -5,6 +5,14 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
+set(KOKKOS_MLIR_ENABLE_PART_TENSOR 0 CACHE BOOL
+       "Enables part_tensor dialect.")
+
+
+if(KOKKOS_MLIR_ENABLE_PART_TENSOR)
+  add_compile_definitions(ENABLE_PART_TENSOR)
+endif()
+
 macro(kokkos_mlir_add_llvm_external_project name identifier location)
   message(STATUS "Adding LLVM external project ${name} (${identifier}) -> ${location}")
   if(NOT EXISTS "${location}/CMakeLists.txt")

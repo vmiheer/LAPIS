@@ -16,7 +16,9 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#ifdef ENABLE_PART_TENSOR
 #include "mlir/Dialect/PartTensor/Transforms/Passes.h"
+#endif
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h"
 #include "mlir/Pass/kmPassManager.h"
@@ -31,7 +33,9 @@ using namespace mlir::sparse_tensor;
 
 void mlir::sparse_tensor::buildSparseKokkosCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
+#ifdef ENABLE_PART_TENSOR
   pm.addPass(createPartTensorConversionPass());
+#endif
   pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
   pm.addPass(createSparsificationAndBufferizationPass(
       getBufferizationOptionsForSparsification(
