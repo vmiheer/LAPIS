@@ -3,7 +3,7 @@
 #include "mlir/CAPI/Registration.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 
-void kokkosMlirRegisterAllPasses() {
+void lapisRegisterAllPasses() {
   mlir::registerAllKokkosPasses();
 }
 

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_INITALLDIALECTS_H_
-#define KOKKOS_MLIR_INITALLDIALECTS_H_
+#ifndef LAPIS_INITALLDIALECTS_H_
+#define LAPIS_INITALLDIALECTS_H_
 
 #include "mlir/InitAllDialects.h"
 #include "mlir/Dialect/PartTensor/IR/PartTensor.h"
@@ -36,4 +36,4 @@ inline void registerAllKokkosDialects(MLIRContext &context) {
 
 } // namespace mlir
 
-#endif // KOKKOS_MLIR_INITALLDIALECTS_H_
+#endif // LAPIS_INITALLDIALECTS_H_

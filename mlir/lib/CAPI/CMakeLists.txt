@@ -1,4 +1,4 @@
-add_mlir_public_c_api_library(KokkosMLIRCAPI
+add_mlir_public_c_api_library(LapisCAPI
   Registration.cpp
 
   ADDITIONAL_HEADER_DIRS
@@ -14,5 +14,5 @@ add_mlir_public_c_api_library(KokkosMLIRCAPI
   MLIRSparseTensorKokkosPipelines
 )
 
-kokkos_mlir_target_includes(KokkosMLIRCAPI)
+lapis_target_includes(LapisCAPI)
 add_subdirectory(IR)

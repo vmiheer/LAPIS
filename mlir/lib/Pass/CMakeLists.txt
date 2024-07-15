@@ -1,4 +1,4 @@
-add_mlir_library(MLIRKokkosPass
+add_mlir_library(LAPISPass
   Pass.cpp
 
   DEPENDS

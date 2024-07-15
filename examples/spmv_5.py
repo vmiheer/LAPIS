@@ -9,9 +9,9 @@ import shutil
 _SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(_SCRIPT_PATH)
 
-from kokkos_mlir.tools import mlir_pytaco_api as pt
-from kokkos_mlir.tools import mlir_pytaco_io as ptio
-from kokkos_mlir.tools import testing_utils as utils
+from lapis.tools import mlir_pytaco_api as pt
+from lapis.tools import mlir_pytaco_io as ptio
+from lapis.tools import testing_utils as utils
 
 ###### This PyTACO part is taken from the TACO open-source project. ######
 # See http://tensor-compiler.org/docs/scientific_computing/index.html.
@@ -45,4 +45,4 @@ with tempfile.TemporaryDirectory() as test_dir:
   print("Compiling, running spmv and writing result to c.tns")
   ptio.write_kokkos("c.tns", c, "parallelization-strategy=any-storage-any-loop kokkos-uses-hierarchical")
 
-shutil.copyfile("mlir_kokkos/mlir_kokkos_module.cpp", "mlir_kokkos/mlir_kokkos_module_5.cpp")
+shutil.copyfile("lapis/lapis_module.cpp", "lapis/lapis_module_5.cpp")

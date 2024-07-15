@@ -9,11 +9,11 @@ import tempfile
 _SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(_SCRIPT_PATH)
 
-from kokkos_mlir.tools import mlir_pytaco_api as pt
-from kokkos_mlir.tools import mlir_pytaco_io as ptio
-from kokkos_mlir.tools import testing_utils as utils
+from lapis.tools import mlir_pytaco_api as pt
+from lapis.tools import mlir_pytaco_io as ptio
+from lapis.tools import testing_utils as utils
 
-from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
+from lapis.linalg_kokkos_backend import KokkosBackend
 
 
 def main():

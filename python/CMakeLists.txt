@@ -7,22 +7,22 @@ set(CMAKE_PLATFORM_NO_VERSIONED_SONAME ON)
 # The directory at which the Python import tree begins.
 # See documentation for `declare_mlir_python_sources`'s ROOT_DIR
 # argument.
-set(KOKKOS_MLIR_PYTHON_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/kokkos_mlir")
+set(LAPIS_PYTHON_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lapis")
 
 
-# We vendor our own MLIR instance in the `kokkos_mlir` namespace.
-add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=kokkos_mlir.")
+# We vendor our own MLIR instance in the `lapis` namespace.
+add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=lapis.")
 
 ################################################################################
 # Sources
 ################################################################################
 
-declare_mlir_python_sources(KokkosMLIRPythonSources)
-declare_mlir_python_sources(KokkosMLIRPythonExtensions)
+declare_mlir_python_sources(LapisPythonSources)
+declare_mlir_python_sources(LapisPythonExtensions)
 
-declare_mlir_python_sources(KokkosMLIRPythonSources.linalg_kokkos_backend
-  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/kokkos_mlir"
-  ADD_TO_PARENT KokkosMLIRPythonSources
+declare_mlir_python_sources(LapisPythonSources.linalg_kokkos_backend
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lapis"
+  ADD_TO_PARENT LapisPythonSources
   SOURCES
     linalg_kokkos_backend/abc.py
     linalg_kokkos_backend/KokkosBackend.py
@@ -30,9 +30,9 @@ declare_mlir_python_sources(KokkosMLIRPythonSources.linalg_kokkos_backend
     _mlir_libs/_mlir/passmanager.pyi
 )
 
-declare_mlir_python_sources(KokkosMLIRPythonSources.tools
-  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/kokkos_mlir"
-  ADD_TO_PARENT KokkosMLIRPythonSources
+declare_mlir_python_sources(LapisPythonSources.tools
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lapis"
+  ADD_TO_PARENT LapisPythonSources
   SOURCES
     tools/mlir_pytaco_api.py
     tools/mlir_pytaco_utils.py
@@ -46,19 +46,19 @@ declare_mlir_python_sources(KokkosMLIRPythonSources.tools
 # Extensions
 ################################################################################
 
-declare_mlir_python_extension(KokkosMLIRPythonExtensions.Main
-  MODULE_NAME _kokkosMlir
-  ADD_TO_PARENT KokkosMLIRPythonExtensions
+declare_mlir_python_extension(LapisPythonExtensions.Main
+  MODULE_NAME _lapis
+  ADD_TO_PARENT LapisPythonExtensions
   SOURCES
-    KokkosMLIRModule.cpp
+    LapisModule.cpp
   EMBED_CAPI_LINK_LIBS
-    KokkosMLIRCAPI
+    LapisCAPI
   PRIVATE_LINK_LIBS
     LLVMSupport
 )
 
-target_include_directories(KokkosMLIRPythonExtensions.Main INTERFACE ${KOKKOS_MLIR_SOURCE_DIR}/mlir/include ${KOKKOS_MLIR_SOURCE_DIR}/mlir/include)
-target_link_libraries(KokkosMLIRPythonExtensions.Main INTERFACE MLIRPythonExtension.Core KOKKOS_MLIRCAPIIR)
+target_include_directories(LapisPythonExtensions.Main INTERFACE ${LAPIS_SOURCE_DIR}/mlir/include ${LAPIS_SOURCE_DIR}/mlir/include)
+target_link_libraries(LapisPythonExtensions.Main INTERFACE MLIRPythonExtension.Core LAPISCAPIIR)
 
 ################################################################################
 # Generate packages and shared library
@@ -73,32 +73,32 @@ set(_source_components
   # for the reference backend, but logically they can be separate. But seemingly
   # the only way to handle that is to create a separate mlir python package
   # tree, which seems excessive.
-  KokkosMLIRPythonSources
+  LapisPythonSources
   MLIRPythonSources
   MLIRPythonExtension.Core
   MLIRPythonExtension.RegisterEverything
-  KokkosMLIRPythonExtensions
+  LapisPythonExtensions
 )
 
-add_mlir_python_common_capi_library(KokkosMLIRAggregateCAPI
-  INSTALL_COMPONENT KokkosMLIRPythonModules
-  INSTALL_DESTINATION python_packages/kokkos_mlir/_mlir_libs
-  OUTPUT_DIRECTORY "${KOKKOS_MLIR_PYTHON_PACKAGES_DIR}/kokkos_mlir/_mlir_libs"
+add_mlir_python_common_capi_library(LapisAggregateCAPI
+  INSTALL_COMPONENT LapisPythonModules
+  INSTALL_DESTINATION python_packages/lapis/_mlir_libs
+  OUTPUT_DIRECTORY "${LAPIS_PYTHON_PACKAGES_DIR}/lapis/_mlir_libs"
   RELATIVE_INSTALL_ROOT "../../../.."
   DECLARED_SOURCES ${_source_components}
 )
 
 target_link_libraries(
-  KokkosMLIRAggregateCAPI
+  LapisAggregateCAPI
   PUBLIC
-  KokkosMLIRCAPI
-  KOKKOS_MLIRCAPIIR
+  LapisCAPI
+  LAPISCAPIIR
 )
 
-add_mlir_python_modules(KokkosMLIRPythonModules
-  ROOT_PREFIX "${KOKKOS_MLIR_PYTHON_PACKAGES_DIR}/kokkos_mlir/kokkos_mlir"
-  INSTALL_PREFIX "python_packages/kokkos_mlir"
+add_mlir_python_modules(LapisPythonModules
+  ROOT_PREFIX "${LAPIS_PYTHON_PACKAGES_DIR}/lapis/lapis"
+  INSTALL_PREFIX "python_packages/lapis"
   DECLARED_SOURCES ${_source_components}
   COMMON_CAPI_LINK_LIBS
-    KokkosMLIRAggregateCAPI
+    LapisAggregateCAPI
   )

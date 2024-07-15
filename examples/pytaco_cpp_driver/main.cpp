@@ -124,7 +124,7 @@ void writeTensor(void* tensor, const char* filename)
 
 int main()
 {
-  kokkos_mlir_initialize();
+  lapis_initialize();
   {
     // Compute c = A*b where:
     //   A is a CRS matrix
@@ -134,7 +134,7 @@ int main()
     void* c = pytaco_main((int8_t*) A, (int8_t*) b);
     writeTensor(c, "c.tns");
   }
-  kokkos_mlir_finalize();
+  lapis_finalize();
   return 0;
 }
 

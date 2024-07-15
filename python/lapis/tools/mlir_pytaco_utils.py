@@ -11,10 +11,10 @@ import numpy as np
 import os
 
 # Import MLIR related modules.
-from kokkos_mlir import execution_engine
-from kokkos_mlir._mlir_libs._mlir import ir
-from kokkos_mlir import runtime
-from kokkos_mlir.dialects import sparse_tensor
+from lapis import execution_engine
+from lapis._mlir_libs._mlir import ir
+from lapis import runtime
+from lapis.dialects import sparse_tensor
 
 from . import mlir_sparse_compiler
 

@@ -8,22 +8,22 @@
 
 #include "mlir/InitAllKokkosPasses.h"
 
-void kokkosMlirRegisterAllPasses() {
+void lapisRegisterAllPasses() {
   mlir::registerAllKokkosPasses();
 }
 
 namespace py = pybind11;
 
-namespace kokkos_mlir {
+namespace lapis {
   namespace python {
     void populatePassManagerSubmodule(py::module &m);
   }
 }
 
-PYBIND11_MODULE(_kokkosMlir, m) {
-  kokkosMlirRegisterAllPasses();
+PYBIND11_MODULE(_lapis, m) {
+  lapisRegisterAllPasses();
 
-  m.doc() = "kokkos-mlir";
+  m.doc() = "lapis";
 
   m.def(
       "register_dialect",
@@ -39,7 +39,7 @@ PYBIND11_MODULE(_kokkosMlir, m) {
 
   auto passModule =
       m.def_submodule("passmanager", "MLIR Pass Management Bindings");
-  kokkos_mlir::python::populatePassManagerSubmodule(passModule);
+  lapis::python::populatePassManagerSubmodule(passModule);
 }
 
 
@@ -81,7 +81,7 @@ private:
 } // namespace
 
 /// Create the `mlir.passmanager` here.
-void kokkos_mlir::python::populatePassManagerSubmodule(py::module &m) {
+void lapis::python::populatePassManagerSubmodule(py::module &m) {
   //----------------------------------------------------------------------------
   // Mapping of the top-level PassManager
   //----------------------------------------------------------------------------
