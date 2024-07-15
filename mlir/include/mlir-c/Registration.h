@@ -7,8 +7,8 @@
 |*                                                                            *|
 \*===----------------------------------------------------------------------===*/
 
-#ifndef KOKKOS_MLIR_C_REGISTRATION_H
-#define KOKKOS_MLIR_C_REGISTRATION_H
+#ifndef LAPIS_C_REGISTRATION_H
+#define LAPIS_C_REGISTRATION_H
 
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
@@ -17,10 +17,10 @@
 extern "C" {
 #endif
 
-MLIR_CAPI_EXPORTED void kokkosMlirRegisterAllPasses();
+MLIR_CAPI_EXPORTED void lapisRegisterAllPasses();
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // KOKKOS_MLIR_C_REGISTRATION_H
+#endif // LAPIS_C_REGISTRATION_H

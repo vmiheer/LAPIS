@@ -1,19 +1,19 @@
 cmake_minimum_required(VERSION 3.20.0)
-project(mlir-kokkos LANGUAGES CXX C)
+project(lapis LANGUAGES CXX C)
 
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-set(KOKKOS_MLIR_ENABLE_PART_TENSOR 0 CACHE BOOL
+set(LAPIS_ENABLE_PART_TENSOR 1 CACHE BOOL
        "Enables part_tensor dialect.")
 
 
-if(KOKKOS_MLIR_ENABLE_PART_TENSOR)
+if(LAPIS_ENABLE_PART_TENSOR)
   add_compile_definitions(ENABLE_PART_TENSOR)
 endif()
 
-macro(kokkos_mlir_add_llvm_external_project name identifier location)
+macro(lapis_add_llvm_external_project name identifier location)
   message(STATUS "Adding LLVM external project ${name} (${identifier}) -> ${location}")
   if(NOT EXISTS "${location}/CMakeLists.txt")
     message(FATAL_ERROR "External project location ${location} is not valid")
@@ -26,9 +26,9 @@ endmacro()
 
 
 
-kokkos_mlir_add_llvm_external_project(
-  kokkos-mlir-dialects
-  KOKKOS_MLIR_DIALECTS
+lapis_add_llvm_external_project(
+  lapis-dialects
+  LAPIS_DIALECTS
   ${CMAKE_CURRENT_SOURCE_DIR}/mlir)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -67,8 +67,8 @@ include(AddMLIR)
 include(MLIRDetectPythonEnv)
 mlir_configure_python_dev_packages()
 
-if(NOT KOKKOS_MLIR_PYTHON_PACKAGES_DIR)
-  set(KOKKOS_MLIR_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python_packages")
+if(NOT LAPIS_PYTHON_PACKAGES_DIR)
+  set(LAPIS_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python_packages")
 endif()
 
 
@@ -80,14 +80,14 @@ include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${STANDALONE_SOURCE_DIR}/include)
 include_directories(${STANDALONE_BINARY_DIR}/include)
 
-set(KOKKOS_MLIR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-set(KOKKOS_MLIR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+set(LAPIS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(LAPIS_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
-function(kokkos_mlir_target_includes target)
+function(lapis_target_includes target)
   set(_dirs
     $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>
-    $<BUILD_INTERFACE:${KOKKOS_MLIR_SOURCE_DIR}/mlir/include>
-    $<BUILD_INTERFACE:${KOKKOS_MLIR_BINARY_DIR}/mlir/include>
+    $<BUILD_INTERFACE:${LAPIS_SOURCE_DIR}/mlir/include>
+    $<BUILD_INTERFACE:${LAPIS_BINARY_DIR}/mlir/include>
   )
   # In LLVM parlance, the actual target may just be an interface and may not
   # be responsible for actually compiling anything. The corresponding obj.

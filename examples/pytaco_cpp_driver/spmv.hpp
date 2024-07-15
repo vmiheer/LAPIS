@@ -4,8 +4,8 @@
 #include <unistd.h>
 using exec_space = Kokkos::DefaultExecutionSpace;
 
-extern "C" void kokkos_mlir_initialize();
-extern "C" void kokkos_mlir_finalize();
+extern "C" void lapis_initialize();
+extern "C" void lapis_finalize();
 
 // If building a CPP driver, we can use the original StridedMemRefType class from MLIR,
 // so do not redefine it here.
@@ -268,12 +268,12 @@ extern "C" void py_pytaco_main(int8_t** ret0, int8_t* param0, int8_t* param1)
 }
 
 
-extern "C" void kokkos_mlir_initialize()
+extern "C" void lapis_initialize()
 {
   Kokkos::initialize();
 }
 
-extern "C" void kokkos_mlir_finalize()
+extern "C" void lapis_finalize()
 {
   Kokkos::finalize();
 }

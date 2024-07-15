@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_INITALLPASSES_H_
-#define KOKKOS_MLIR_INITALLPASSES_H_
+#ifndef LAPIS_INITALLPASSES_H_
+#define LAPIS_INITALLPASSES_H_
 
 #include "mlir/InitAllPasses.h"
 #include "mlir/Dialect/SparseTensor/Pipelines/kmPasses.h"
@@ -29,4 +29,4 @@ inline void registerAllKokkosPasses() {
 
 } // namespace mlir
 
-#endif // KOKKOS_MLIR_INITALLPASSES_H_
+#endif // LAPIS_INITALLPASSES_H_

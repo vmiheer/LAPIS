@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_INITALLTRANSLATIONS_H
-#define KOKKOS_MLIR_INITALLTRANSLATIONS_H
+#ifndef LAPIS_INITALLTRANSLATIONS_H
+#define LAPIS_INITALLTRANSLATIONS_H
 
 #include "mlir/InitAllTranslations.h"
 
@@ -33,4 +33,4 @@ inline void registerAllKokkosTranslations() {
 }
 } // namespace mlir
 
-#endif // KOKKOS_MLIR_INITALLTRANSLATIONS_H
+#endif // LAPIS_INITALLTRANSLATIONS_H

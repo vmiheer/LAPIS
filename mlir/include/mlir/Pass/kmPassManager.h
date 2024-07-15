@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_PASS_PASSMANAGER_H
-#define KOKKOS_MLIR_PASS_PASSMANAGER_H
+#ifndef LAPIS_PASS_PASSMANAGER_H
+#define LAPIS_PASS_PASSMANAGER_H
 
 // Temporary fix, we do not want to include PassManager.h from upstream LLVM
 #define MLIR_PASS_PASSMANAGER_H
@@ -482,4 +482,4 @@ void applyDefaultTimingPassManagerCLOptions(PassManager &pm);
 
 } // namespace mlir
 
-#endif // KOKKOS_MLIR_PASS_PASSMANAGER_H
+#endif // LAPIS_PASS_PASSMANAGER_H

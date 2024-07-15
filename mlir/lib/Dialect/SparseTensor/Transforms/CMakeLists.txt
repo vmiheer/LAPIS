@@ -1,4 +1,4 @@
-if(KOKKOS_MLIR_ENABLE_PART_TENSOR)
+if(LAPIS_ENABLE_PART_TENSOR)
   add_mlir_dialect_library(Kokkos_MLIRSparseTensorTransforms
     SparseKokkosCodegen.cpp
     SparseTensorPasses.cpp
@@ -7,7 +7,7 @@ if(KOKKOS_MLIR_ENABLE_PART_TENSOR)
     ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/SparseTensor
 
     DEPENDS
-    KOKKOS_MLIRSparseTensorPassIncGen
+    LAPISSparseTensorPassIncGen
 
     LINK_LIBS PUBLIC
     MLIRSparseTensorTransforms
@@ -22,7 +22,7 @@ else()
     ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/SparseTensor
 
     DEPENDS
-    KOKKOS_MLIRSparseTensorPassIncGen
+    LAPISSparseTensorPassIncGen
 
     LINK_LIBS PUBLIC
     MLIRSparseTensorTransforms

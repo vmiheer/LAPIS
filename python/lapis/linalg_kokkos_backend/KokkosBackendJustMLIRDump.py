@@ -11,12 +11,12 @@ import subprocess
 from io import StringIO
 import tempfile
 
-from kokkos_mlir.ir import *
-from kokkos_mlir.passmanager import *
-from kokkos_mlir.runtime import *
+from lapis.ir import *
+from lapis.passmanager import *
+from lapis.runtime import *
 # Imported for side effects.
-import kokkos_mlir.all_passes_registration
-import kokkos_mlir.dialects.torch
+import lapis.all_passes_registration
+import lapis.dialects.torch
 
 from .abc import LinalgKokkosBackend
 
@@ -121,14 +121,14 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
             pm = PassManager.parse(LOWERING_PIPELINE)
             pm.run(module)
             moduleAsm = module.operation.get_asm(large_elements_limit=10, enable_debug_info=False)
-            filename = "/run/media/bmkelle/6b046acd-4efd-4f43-a567-1699d733ba4c/mlir-trilinos/torch-mlir/examples/mlir_kokkos/dump.mlir"
+            filename = "/run/media/bmkelle/6b046acd-4efd-4f43-a567-1699d733ba4c/mlir-trilinos/torch-mlir/examples/lapis/dump.mlir"
             with open(filename, 'w') as f:
                 f.write(asm_for_error_report)
-                print("Wrote out MLIR dump to /run/media/bmkelle/6b046acd-4efd-4f43-a567-1699d733ba4c/mlir-trilinos/torch-mlir/examples/mlir_kokkos/dump.mlir")
+                print("Wrote out MLIR dump to /run/media/bmkelle/6b046acd-4efd-4f43-a567-1699d733ba4c/mlir-trilinos/torch-mlir/examples/lapis/dump.mlir")
             return None
             # TODO: this is hardcoded now, but what should it be in the long term?
             # Make the output location a parameter of compile()? Use temp dir?
-            moduleRoot = "/run/media/bmkelle/6b046acd-4efd-4f43-a567-1699d733ba4c/mlir-trilinos/torch-mlir/examples/mlir_kokkos"
+            moduleRoot = "/run/media/bmkelle/6b046acd-4efd-4f43-a567-1699d733ba4c/mlir-trilinos/torch-mlir/examples/lapis"
             buildDir = moduleRoot + "/build"
             # First, clean existing CMakeCache.txt from build if it exists
             if os.path.isfile(buildDir + '/CMakeCache.txt'):
@@ -137,7 +137,7 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
             os.makedirs(buildDir, exist_ok=True)
             # Generate Kokkos C++ source from the module.
             print("Emitting module as Kokkos C++...")
-            pm.emit_kokkos(module, moduleRoot + "/mlir_kokkos_module.cpp", moduleRoot + "/mlir_kokkos.py")
+            pm.emit_kokkos(module, moduleRoot + "/lapis_module.cpp", moduleRoot + "/lapis.py")
             # Now that we have a Kokkos source file, generate the CMake to build it into a shared lib,
             # using $KOKKOS_ROOT as the kokkos installation.
             if 'KOKKOS_ROOT' not in os.environ:
@@ -145,14 +145,14 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
             kokkosDir = os.environ['KOKKOS_ROOT']
             print("Generating CMakeLists.txt...")
             cmake = open(moduleRoot + "/CMakeLists.txt", "w")
-            cmake.write("project(mlir_kokkos)\n")
+            cmake.write("project(lapis)\n")
             cmake.write("cmake_minimum_required(VERSION 3.16 FATAL_ERROR)\n")
             cmake.write("find_package(Kokkos REQUIRED\n")
             cmake.write(" PATHS ")
             cmake.write(kokkosDir)
             cmake.write("/lib64/cmake/Kokkos)\n")
-            cmake.write("add_library(mlir_kokkos_module SHARED mlir_kokkos_module.cpp)\n")
-            cmake.write("target_link_libraries(mlir_kokkos_module Kokkos::kokkos)\n")
+            cmake.write("add_library(lapis_module SHARED lapis_module.cpp)\n")
+            cmake.write("target_link_libraries(lapis_module Kokkos::kokkos)\n")
             cmake.close()
             # Now configure the project and build the shared library from the build dir
             print("Configuring build...")
@@ -161,6 +161,6 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
             buildOut = subprocess.run(['make'], cwd=buildDir, shell=True)
             print("Importing module...")
             sys.path.insert(0, moduleRoot)
-            import mlir_kokkos
-            return mlir_kokkos.MLIRKokkosModule(buildDir + "/libmlir_kokkos_module.so")
+            import lapis
+            return lapis.LAPISModule(buildDir + "/liblapis_module.so")
 

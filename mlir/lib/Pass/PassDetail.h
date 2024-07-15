@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-#ifndef KOKKOS_MLIR_PASS_PASSDETAIL_H_
-#define KOKKOS_MLIR_PASS_PASSDETAIL_H_
+#ifndef LAPIS_PASS_PASSDETAIL_H_
+#define LAPIS_PASS_PASSDETAIL_H_
 
 #include "mlir/IR/Action.h"
 #include "mlir/Pass/Pass.h"
@@ -151,4 +151,4 @@ private:
 
 } // namespace detail
 } // namespace mlir
-#endif // KOKKOS_MLIR_PASS_PASSDETAIL_H_
+#endif // LAPIS_PASS_PASSDETAIL_H_

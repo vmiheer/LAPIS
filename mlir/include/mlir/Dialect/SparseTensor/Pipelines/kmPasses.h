@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_DIALECT_SPARSETENSOR_PIPELINES_PASSES_H_
-#define KOKKOS_MLIR_DIALECT_SPARSETENSOR_PIPELINES_PASSES_H_
+#ifndef LAPIS_DIALECT_SPARSETENSOR_PIPELINES_PASSES_H_
+#define LAPIS_DIALECT_SPARSETENSOR_PIPELINES_PASSES_H_
 
 #include "mlir/Dialect/SparseTensor/Pipelines/Passes.h"
 
@@ -36,4 +36,4 @@ void registerSparseTensorKokkosPipelines();
 } // namespace sparse_tensor
 } // namespace mlir
 
-#endif // KOKKOS_MLIR_DIALECT_SPARSETENSOR_PIPELINES_PASSES_H_
+#endif // LAPIS_DIALECT_SPARSETENSOR_PIPELINES_PASSES_H_

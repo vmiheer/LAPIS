@@ -11,12 +11,12 @@ import subprocess
 from io import StringIO
 import tempfile
 
-from .._mlir_libs._kokkosMlir import register_dialect
+from .._mlir_libs._lapis import register_dialect
 
-from kokkos_mlir.tools import mlir_pytaco_api as pt
-from kokkos_mlir.tools import mlir_pytaco
-from kokkos_mlir._mlir_libs._mlir import ir
-from kokkos_mlir._mlir_libs._kokkosMlir import passmanager
+from lapis.tools import mlir_pytaco_api as pt
+from lapis.tools import mlir_pytaco
+from lapis._mlir_libs._mlir import ir
+from lapis._mlir_libs._lapis import passmanager
 
 from .abc import LinalgKokkosBackend
 
@@ -93,9 +93,9 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         self.index_instance = index_instance
         self.num_instances = num_instances
         if self.index_instance == 0:
-            self.package_name = "mlir_kokkos"
+            self.package_name = "lapis_package"
         else:
-            self.package_name = "mlir_kokkos_"+str(self.index_instance)
+            self.package_name = "lapis_package_"+str(self.index_instance)
 
     def compile_kokkos_to_native(self, moduleRoot, linkSparseSupportLib):
         # Now that we have a Kokkos source file, generate the CMake to build it into a shared lib,
@@ -137,11 +137,11 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         buildOut = subprocess.run(['make'], cwd=buildDir, shell=True)
         print("Importing module...")
         sys.path.insert(0, moduleRoot)
-        mlir_kokkos = __import__(self.package_name)
+        lapis = __import__(self.package_name)
         if os.path.isfile(buildDir + "/lib" + self.package_name + "_module.so"):
-            return mlir_kokkos.MLIRKokkosModule(buildDir + "/lib" + self.package_name + "_module.so")
+            return lapis.LAPISModule(buildDir + "/lib" + self.package_name + "_module.so")
         if os.path.isfile(buildDir + "/lib" + self.package_name + "_module.dylib"):
-            return mlir_kokkos.MLIRKokkosModule(buildDir + "/lib" + self.package_name + "_module.dylib")
+            return lapis.LAPISModule(buildDir + "/lib" + self.package_name + "_module.dylib")
 
     def compile(self, module):
         """Compiles an imported module, with a flat list of functions.

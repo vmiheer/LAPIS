@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_C_PASS_H
-#define KOKKOS_MLIR_C_PASS_H
+#ifndef LAPIS_C_PASS_H
+#define LAPIS_C_PASS_H
 
 #include "mlir-c/Pass.h"
 
@@ -33,4 +33,4 @@ mlirPassManagerEmitKokkosSparse(MlirPassManager passManager, MlirModule module, 
 }
 #endif
 
-#endif // KOKKOS_MLIR_C_PASS_H
+#endif // LAPIS_C_PASS_H

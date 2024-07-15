@@ -205,7 +205,7 @@ struct KokkosCppEmitter {
   /// Emits operation 'op' with/without training semicolon or returns failure.
   LogicalResult emitOperation(Operation &op, bool trailingSemicolon, KokkosParallelEnv &kokkosParallelEnv);
 
-  /// Emits the functions kokkos_mlir_initialize() and kokkos_mlir_finalize()
+  /// Emits the functions lapis_initialize() and lapis_finalize()
   /// These are responsible for init/finalize of Kokkos, and allocation/initialization/deallocation
   /// of global Kokkos::Views.
   LogicalResult emitInitAndFinalize();
@@ -3287,7 +3287,7 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
 
 LogicalResult KokkosCppEmitter::emitInitAndFinalize()
 {
-  os << "extern \"C\" void kokkos_mlir_initialize()\n";
+  os << "extern \"C\" void lapis_initialize()\n";
   os << "{\n";
   os.indent();
   os << "if (!Kokkos::is_initialized()) Kokkos::initialize();\n";
@@ -3323,7 +3323,7 @@ LogicalResult KokkosCppEmitter::emitInitAndFinalize()
   }
   os.unindent();
   os << "}\n\n";
-  os << "extern \"C\" void kokkos_mlir_finalize()\n";
+  os << "extern \"C\" void lapis_finalize()\n";
   os << "{\n";
   os.indent();
   for(auto& op : globalViews)
@@ -3343,18 +3343,18 @@ LogicalResult KokkosCppEmitter::emitPythonBoilerplate(bool isLastKernel)
 {
   *py_os << "import ctypes\n";
   *py_os << "import numpy\n";
-  *py_os << "class MLIRKokkosModule:\n";
+  *py_os << "class LAPISModule:\n";
   *py_os << "  def __init__(self, libPath):\n";
-  *py_os << "    print('Hello from MLIRKokkosModule.__init__!')\n";
+  *py_os << "    print('Hello from LAPISModule.__init__!')\n";
   *py_os << "    self.libHandle = ctypes.CDLL(libPath)\n";
   // Do all initialization immediately
   *py_os << "    print('Initializing module.')\n";
-  *py_os << "    self.libHandle.kokkos_mlir_initialize()\n";
+  *py_os << "    self.libHandle.lapis_initialize()\n";
   *py_os << "    print('Done initializing module.')\n";
   *py_os << "  def __del__(self):\n";
   *py_os << "    print('Finalizing module.')\n";
   if(isLastKernel)
-    *py_os << "    self.libHandle.kokkos_mlir_finalize()\n";
+    *py_os << "    self.libHandle.lapis_finalize()\n";
   //From here, just function wrappers are emitted as class members.
   //Indent now for all of them.
   py_os->indent();
@@ -3501,8 +3501,8 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
   {
     //Will later add definitions for these functions.
     //They depend on what global constant memrefs get created
-    emitter << "extern \"C\" void kokkos_mlir_initialize();\n";
-    emitter << "extern \"C\" void kokkos_mlir_finalize();\n\n";
+    emitter << "extern \"C\" void lapis_initialize();\n";
+    emitter << "extern \"C\" void lapis_finalize();\n\n";
   }
   if(enableSparseSupport)
   {

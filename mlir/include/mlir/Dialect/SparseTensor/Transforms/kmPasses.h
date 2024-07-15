@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef KOKKOS_MLIR_DIALECT_SPARSETENSOR_TRANSFORMS_PASSES_H_
-#define KOKKOS_MLIR_DIALECT_SPARSETENSOR_TRANSFORMS_PASSES_H_
+#ifndef LAPIS_DIALECT_SPARSETENSOR_TRANSFORMS_PASSES_H_
+#define LAPIS_DIALECT_SPARSETENSOR_TRANSFORMS_PASSES_H_
 
 #include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
 
@@ -26,4 +26,4 @@ std::unique_ptr<Pass> createSparseKokkosCodegenPass();
 
 } // namespace mlir
 
-#endif // KOKKOS_MLIR_DIALECT_SPARSETENSOR_TRANSFORMS_PASSES_H_
+#endif // LAPIS_DIALECT_SPARSETENSOR_TRANSFORMS_PASSES_H_

@@ -30,22 +30,22 @@ import os
 import threading
 
 # Import MLIR related modules.
-from kokkos_mlir import execution_engine
-from kokkos_mlir._mlir_libs._mlir import ir
-from kokkos_mlir import runtime
-from kokkos_mlir.dialects import arith
-from kokkos_mlir.dialects import bufferization
-from kokkos_mlir.dialects import builtin
-from kokkos_mlir.dialects import func
-from kokkos_mlir.dialects import linalg
-from kokkos_mlir.dialects import sparse_tensor
-from kokkos_mlir.dialects import tensor
-from kokkos_mlir.dialects.linalg.opdsl import lang
+from lapis import execution_engine
+from lapis._mlir_libs._mlir import ir
+from lapis import runtime
+from lapis.dialects import arith
+from lapis.dialects import bufferization
+from lapis.dialects import builtin
+from lapis.dialects import func
+from lapis.dialects import linalg
+from lapis.dialects import sparse_tensor
+from lapis.dialects import tensor
+from lapis.dialects.linalg.opdsl import lang
 
 from . import mlir_pytaco_utils as utils
 
 # Import Kokkos pipeline
-from kokkos_mlir.linalg_kokkos_backend import KokkosBackend
+from lapis.linalg_kokkos_backend import KokkosBackend
 
 # TACO naming prefixes.
 _TACO_INDEX_PREFIX = "i"
