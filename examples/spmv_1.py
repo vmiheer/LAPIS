@@ -45,4 +45,4 @@ with tempfile.TemporaryDirectory() as test_dir:
   print("Compiling, running spmv and writing result to c.tns")
   ptio.write_kokkos("c.tns", c, "parallelization-strategy=none")
 
-shutil.copyfile("lapis/lapis_module.cpp", "lapis/lapis_module_1.cpp")
+shutil.copyfile("lapis_package/lapis_package_module.cpp", "lapis_package/lapis_package_module_1.cpp")

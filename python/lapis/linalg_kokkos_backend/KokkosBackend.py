@@ -93,9 +93,9 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         self.index_instance = index_instance
         self.num_instances = num_instances
         if self.index_instance == 0:
-            self.package_name = "lapis_module"
+            self.package_name = "lapis_package"
         else:
-            self.package_name = "lapis_module_"+str(self.index_instance)
+            self.package_name = "lapis_package_"+str(self.index_instance)
 
     def compile_kokkos_to_native(self, moduleRoot, linkSparseSupportLib):
         # Now that we have a Kokkos source file, generate the CMake to build it into a shared lib,

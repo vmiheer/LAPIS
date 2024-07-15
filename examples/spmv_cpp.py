@@ -51,4 +51,4 @@ print("Compiling, running spmv and writing result to c.tns")
 ptio.write_kokkos("c.tns", c, "parallelization-strategy=any-storage-outer-loop")
 
 print("Copying generated C++ source to pytaco_cpp_driver/spmv.cpp...")
-shutil.copyfile("lapis/lapis_module.cpp", "pytaco_cpp_driver/spmv.hpp")
+shutil.copyfile("lapis_package/lapis_package_module.cpp", "pytaco_cpp_driver/spmv.hpp")
