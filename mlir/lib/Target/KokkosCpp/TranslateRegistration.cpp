@@ -11,6 +11,7 @@
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -32,7 +33,7 @@ void registerToKokkosTranslation() {
   TranslateFromMLIRRegistration reg1(
       "mlir-to-kokkos", "translate from mlir to Kokkos",
       [](Operation *op, raw_ostream &output) {
-        return emitc::translateToKokkosCpp(
+        return kokkos::translateToKokkosCpp(
             op, output, /* enableSparseSupport */ false);
       },
       [](DialectRegistry &registry) {
@@ -41,6 +42,7 @@ void registerToKokkosTranslation() {
                         cf::ControlFlowDialect,
                         emitc::EmitCDialect,
                         func::FuncDialect,
+                        kokkos::KokkosDialect,
                         LLVM::LLVMDialect,
                         math::MathDialect,
                         memref::MemRefDialect,
@@ -51,7 +53,7 @@ void registerToKokkosTranslation() {
   TranslateFromMLIRRegistration reg2(
       "sparse-mlir-to-kokkos", "translate from mlir (with sparse tensors) to Kokkos",
       [](Operation *op, raw_ostream &output) {
-        return emitc::translateToKokkosCpp(
+        return kokkos::translateToKokkosCpp(
             op, output, /* enableSparseSupport */ true);
       },
       [](DialectRegistry &registry) {
@@ -61,6 +63,7 @@ void registerToKokkosTranslation() {
                         emitc::EmitCDialect,
                         func::FuncDialect,
                         math::MathDialect,
+                        kokkos::KokkosDialect,
                         LLVM::LLVMDialect,
                         memref::MemRefDialect,
                         scf::SCFDialect>();

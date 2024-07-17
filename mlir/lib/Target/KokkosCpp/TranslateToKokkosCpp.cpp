@@ -13,6 +13,7 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -37,7 +38,6 @@
 #endif
 
 using namespace mlir;
-using namespace mlir::emitc;
 using llvm::formatv;
 
 enum struct MemSpace
@@ -3639,7 +3639,7 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
 }
 
 //Version for when we are just emitting C++
-LogicalResult emitc::translateToKokkosCpp(Operation *op, raw_ostream &os, bool enableSparseSupport) {
+LogicalResult kokkos::translateToKokkosCpp(Operation *op, raw_ostream &os, bool enableSparseSupport) {
   //Uncomment to pause so you can attach debugger
   //pauseForDebugger();
   KokkosCppEmitter emitter(os, enableSparseSupport);
@@ -3655,7 +3655,7 @@ LogicalResult emitc::translateToKokkosCpp(Operation *op, raw_ostream &os, bool e
 }
 
 //Version for when we are emitting both C++ and Python wrappers
-LogicalResult emitc::translateToKokkosCpp(Operation *op, raw_ostream &os, raw_ostream &py_os, bool enableSparseSupport, bool useHierarchical, bool isLastKernel) {
+LogicalResult kokkos::translateToKokkosCpp(Operation *op, raw_ostream &os, raw_ostream &py_os, bool enableSparseSupport, bool useHierarchical, bool isLastKernel) {
   //Uncomment to pause so you can attach debugger
   //pauseForDebugger();
   KokkosCppEmitter emitter(os, py_os, enableSparseSupport);
