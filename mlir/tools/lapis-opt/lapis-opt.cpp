@@ -15,6 +15,9 @@
 using namespace mlir;
 
 int main(int argc, char **argv) {
+  // lapis-opt is intended to drive only passes from the custom
+  // LAPIS dialects (Kokkos and PartTensor), not builtin dialects.
+  // Use mlir-opt for those passes.
   DialectRegistry registry;
   registry.insert<
     mlir::kokkos::KokkosDialect,

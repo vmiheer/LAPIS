@@ -232,6 +232,56 @@ LogicalResult ParallelOp::verify() {
   return success();
 }
 
+ParseResult TeamParallelOp::parse(OpAsmParser &parser, OperationState &result) {
+  auto &builder = parser.getBuilder();
+  // Parse an opening `(` followed by induction variables followed by `)`
+  SmallVector<OpAsmParser::Argument, 4> ivs;
+  if (parser.parseArgumentList(ivs, OpAsmParser::Delimiter::Paren))
+    return failure();
+
+  // Parse loop bounds.
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> upper;
+  if (parser.parseArrow() ||
+      parser.parseOperandList(upper, ivs.size(),
+                              OpAsmParser::Delimiter::Paren) ||
+      parser.resolveOperands(upper, builder.getIndexType(), result.operands))
+    return failure();
+
+  // Parse init values.
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> initVals;
+  if (succeeded(parser.parseOptionalKeyword("init"))) {
+    if (parser.parseOperandList(initVals, OpAsmParser::Delimiter::Paren))
+      return failure();
+  }
+
+  // Parse optional results in case there is a reduce.
+  if (parser.parseOptionalArrowTypeList(result.types))
+    return failure();
+
+  // Now parse the body.
+  Region *body = result.addRegion();
+  for (auto &iv : ivs)
+    iv.type = builder.getIndexType();
+  if (parser.parseRegion(*body, ivs))
+    return failure();
+
+  // Set `operandSegmentSizes` attribute.
+  result.addAttribute(
+      ParallelOp::getOperandSegmentSizeAttr(),
+      builder.getDenseI32ArrayAttr({static_cast<int32_t>(upper.size()),
+                                    static_cast<int32_t>(initVals.size())}));
+
+  // Parse attributes.
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.resolveOperands(initVals, result.types, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+
+  // Add a terminator if none was parsed.
+  mlir::scf::ForOp::ensureTerminator(*body, builder, result.location);
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Kokkos/IR/Kokkos.cpp.inc"
 
