@@ -1,1 +1,2 @@
-add_subdirectory(mlir-translate)
+add_subdirectory(lapis-translate)
+add_subdirectory(lapis-opt)
