@@ -253,19 +253,13 @@ void TeamParallelOp::build(
     OpBuilder &builder, OperationState &result,
     Value leagueSize, Value teamSize, Value vectorLength,
     ValueRange initVals,
-    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
+    function_ref<void(OpBuilder &, Location, Value, Value, Value, ValueRange)>
         bodyBuilderFn) {
-  result.addOperands(upperBounds);
-  result.addOperands(initVals);
-  result.addAttribute(
-      RangeParallelOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(initVals.size())}));
-  result.addAttribute("executionSpace", ExecutionSpaceAttr::get(builder.getContext(), executionSpace));
-  result.addAttribute("parallelLevel", ParallelLevelAttr::get(builder.getContext(), parallelLevel));
+
   result.addTypes(initVals.getTypes());
 
   OpBuilder::InsertionGuard guard(builder);
+  SmallVector<Type, 4> 
   unsigned numIVs = upperBounds.size();
   SmallVector<Type, 8> argTypes(numIVs, builder.getIndexType());
   SmallVector<Location, 8> argLocs(numIVs, result.location);
@@ -278,7 +272,7 @@ void TeamParallelOp::build(
                   bodyBlock->getArguments().take_front(numIVs),
                   bodyBlock->getArguments().drop_front(numIVs));
   }
-  RangeParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
+  TeamParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
 void RangeParallelOp::build(
