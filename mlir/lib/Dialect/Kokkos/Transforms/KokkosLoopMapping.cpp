@@ -26,7 +26,7 @@ namespace {
 int getOpParallelDepth(Operation* op)
 {
   int depth = 0;
-  if(isa<scf::ParallelOp>(op) || isa<kokkos::ParallelOp>(op))
+  if(isa<scf::ParallelOp>(op) || isa<kokkos::RangeParallelOp>(op) || isa<kokkos::TeamParallelOp>(op))
     depth++;
   Operation* parent = op->getParentOp();
   if(parent)
@@ -51,11 +51,11 @@ int getParallelNumLevels(scf::ParallelOp op)
 
 // Rewrite the given scf.parallel as a kokkos.parallel, with the given execution space and nesting level
 // (not for TeamPolicy loops)
-LogicalResult scfParallelToKokkos(RewriterBase& rewriter, scf::ParallelOp op, kokkos::ExecutionSpace exec, kokkos::ParallelLevel level)
+LogicalResult scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp op, kokkos::ExecutionSpace exec, kokkos::ParallelLevel level)
 {
   rewriter.setInsertionPoint(op);
   // Create the kokkos.parallel but don't populate the body yet
-  auto newOp = rewriter.create<kokkos::ParallelOp>(
+  auto newOp = rewriter.create<kokkos::RangeParallelOp>(
     op.getLoc(), exec, level, op.getUpperBound(), op.getInitVals(), nullptr);
   // Now inline the old loop's operations into the new loop (replacing all usages of the induction variables)
   rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), newOp.getInductionVars());
@@ -94,7 +94,7 @@ LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op
 {
   rewriter.setInsertionPoint(op);
   // Create the kokkos.parallel but don't populate the body yet
-  auto newOp = rewriter.create<kokkos::TeamPolicyParallelOp>(
+  auto newOp = rewriter.create<kokkos::TeamParallelOp>(
     op.getLoc(), leagueSize, teamSize, vectorLength, op.getInitVals(), nullptr);
   // Now inline the old loop's operations into the new loop (replacing all usages of the induction variables)
   rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), newOp.getInductionVars());
@@ -227,6 +227,7 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     {
       //TODO
     }
+    return success();
   }
 };
 

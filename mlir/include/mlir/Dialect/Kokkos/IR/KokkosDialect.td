@@ -80,7 +80,8 @@ def Kokkos_SingleLevel : I64EnumAttr<
 class Kokkos_Op<string mnemonic, list<Trait> traits = []>
     : Op<Kokkos_Dialect, mnemonic, traits>;
 
-def ParallelOp : Kokkos_Op<"parallel",
+
+def RangeParallelOp : Kokkos_Op<"range_parallel",
     [AutomaticAllocationScope,
      AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
@@ -122,7 +123,7 @@ def ParallelOp : Kokkos_Op<"parallel",
   let hasVerifier = 1;
 }
 
-def TeamPolicyParallelOp : Kokkos_Op<"team_parallel",
+def TeamParallelOp : Kokkos_Op<"team_parallel",
     [AutomaticAllocationScope,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
      RecursiveMemoryEffects,
@@ -160,6 +161,20 @@ def TeamPolicyParallelOp : Kokkos_Op<"team_parallel",
   let hasCanonicalizer = 0;
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+}
+
+def TeamBarrierOp : Kokkos_Op<"barrier", [HasParent<TeamParallelOp>]> {
+  let summary = "Synchronize all threads in a team. In C++, t.team_barrier()";
+  let description = [{
+    Kokkos team barrier, to be called within a TeamPolicy context. All threads in
+    the team must reach the barrier together to avoid deadlock, but this is enforced by the
+    fact that TeamParallelOp must be the parent.
+    ```
+    kokkos.barrier
+    ```
+  }];
+
+  let assemblyFormat = "attr-dict";
 }
 
 def SyncOp : Kokkos_Op<"sync"> {
@@ -211,6 +226,79 @@ def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"scf::YieldOp"
   let hasCanonicalizer = 0;
   let hasCustomAssemblyFormat = 0;
   let hasVerifier = 0;
+}
+
+def ReduceOp : Kokkos_Op<"reduce",
+[ParentOneOf<["RangeParallelOp", "TeamParallelOp"]>]>
+{
+  let summary = "reduce operation for parallel for";
+  let description = [{
+    "scf.reduce" is an operation occurring inside "scf.parallel" operations.
+    It consists of one block with two arguments which have the same type as the
+    operand of "scf.reduce".
+    
+    "scf.reduce" is used to model the value for reduction computations of a
+    "scf.parallel" operation. It has to appear as an immediate child of a
+    "scf.parallel" and is associated with a result value of its parent
+    operation.
+    
+    Association is in the order of appearance in the body where the first
+    result of a parallel loop operation corresponds to the first "scf.reduce"
+    in the operation's body region. The reduce operation takes a single
+    operand, which is the value to be used in the reduction.
+      
+    The reduce operation contains a region whose entry block expects two
+    arguments of the same type as the operand. As the iteration order of the
+    parallel loop and hence reduction order is unspecified, the result of
+    reduction may be non-deterministic unless the operation is associative and
+    commutative.
+
+    The result of the reduce operation's body must have the same type as the
+    operands and associated result value of the parallel loop operation.
+    Example:
+
+    ```mlir
+    %operand = arith.constant 1.0 : f32
+    scf.reduce(%operand) : f32 {
+      ^bb0(%lhs : f32, %rhs: f32):
+        %res = arith.addf %lhs, %rhs : f32
+        scf.reduce.return %res : f32
+    }
+    ```
+  }];
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "Value":$operand,
+      CArg<"function_ref<void (OpBuilder &, Location, Value, Value)>",
+           "nullptr">:$bodyBuilderFn)>
+  ];
+
+  let arguments = (ins AnyType:$operand);
+  let hasCustomAssemblyFormat = 1;
+  let regions = (region SizedRegion<1>:$reductionOperator);
+  let hasRegionVerifier = 1;
+}
+
+def YieldOp : Kokkos_Op<"yield", [Pure, ReturnLike, Terminator,
+    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "SingleOp", "ReduceOp"]>]> {
+  let summary = "termination operation";
+  let description = [{ 
+    "kokkos.yield" terminates the region of a parallel, single or reduction op.
+    If enclosed in a parallel op, it should have zero operands.
+    If enclosed in a single, the operand types must match the results
+    of the single, and these are the values that will be broadcast by the single.
+    If enclosed in the i'th region of a reduce, the operand is the i'th updated
+    partial reduction.
+    If the enclosing operation has no results and a yield is not added explicitly,
+    then the custom IR builders will insert one automatically.
+  }];
+    
+  let arguments = (ins Variadic<AnyType>:$results);
+  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
+  
+  let assemblyFormat = 
+      [{  attr-dict ($results^ `:` type($results))? }];
 }
 
 #endif
