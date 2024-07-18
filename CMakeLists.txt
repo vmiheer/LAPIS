@@ -64,13 +64,14 @@ include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
 
-include(MLIRDetectPythonEnv)
-mlir_configure_python_dev_packages()
+if(MLIR_ENABLE_BINDINGS_PYTHON)
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
 
-if(NOT LAPIS_PYTHON_PACKAGES_DIR)
-  set(LAPIS_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python_packages")
+  if(NOT LAPIS_PYTHON_PACKAGES_DIR)
+    set(LAPIS_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python_packages")
+  endif()
 endif()
-
 
 set(STANDALONE_SOURCE_DIR ${PROJECT_SOURCE_DIR})
 set(STANDALONE_BINARY_DIR ${PROJECT_BINARY_DIR})
@@ -104,7 +105,9 @@ link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_subdirectory(mlir)
-add_subdirectory(python)
+if(MLIR_ENABLE_BINDINGS_PYTHON)
+  add_subdirectory(python)
+endif()
 
 enable_testing()
 add_subdirectory(tests)
