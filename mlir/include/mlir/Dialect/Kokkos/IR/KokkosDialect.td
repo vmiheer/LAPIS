@@ -103,7 +103,7 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
   let builders = [
     OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel, "ValueRange":$upperBounds,
       "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange, ValueRange)>",
+      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
     OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel, "ValueRange":$upperBounds,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
