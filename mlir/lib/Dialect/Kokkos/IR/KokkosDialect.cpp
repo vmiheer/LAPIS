@@ -52,7 +52,7 @@ static TerminatorTy verifyAndGetTerminator(Operation *op, Region &region,
   auto diag = op->emitOpError(errorMessage);
   if (terminatorOperation)
     return success();
-    diag.attachNote(terminatorOperation->getLoc()) << "terminator here";
+  diag.attachNote(terminatorOperation->getLoc()) << "terminator here";
   return nullptr;
 }
 
@@ -63,8 +63,7 @@ static TerminatorTy verifyAndGetTerminator(Operation *op, Region &region,
 void RangeParallelOp::build(
     OpBuilder &builder, OperationState &result, ::mlir::kokkos::ExecutionSpace executionSpace, ::mlir::kokkos::ParallelLevel parallelLevel,
     ValueRange upperBounds, ValueRange initVals,
-    function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)>
-        bodyBuilderFn) {
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
   result.addOperands(upperBounds);
   result.addOperands(initVals);
   result.addAttribute(
@@ -85,8 +84,7 @@ void RangeParallelOp::build(
   if (bodyBuilderFn) {
     builder.setInsertionPointToStart(bodyBlock);
     bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIVs),
-                  bodyBlock->getArguments().drop_front(numIVs));
+                  bodyBlock->getArguments());
   }
   RangeParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
@@ -94,19 +92,7 @@ void RangeParallelOp::build(
 void RangeParallelOp::build(
     OpBuilder &builder, OperationState &result, ::mlir::kokkos::ExecutionSpace executionSpace, ::mlir::kokkos::ParallelLevel parallelLevel,
     ValueRange upperBounds, function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  // Only pass a non-null wrapper if bodyBuilderFn is non-null itself. Make sure
-  // we don't capture a reference to a temporary by constructing the lambda at
-  // function level.
-  auto wrappedBuilderFn = [&bodyBuilderFn](OpBuilder &nestedBuilder,
-                                           Location nestedLoc, ValueRange ivs,
-                                           ValueRange) {
-    bodyBuilderFn(nestedBuilder, nestedLoc, ivs);
-  };
-  function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)> wrapper;
-  if (bodyBuilderFn)
-    wrapper = wrappedBuilderFn;
-
-  build(builder, result, executionSpace, parallelLevel, upperBounds, ValueRange(), wrapper);
+  build(builder, result, executionSpace, parallelLevel, upperBounds, ValueRange(), bodyBuilderFn);
 }
 
 Region &RangeParallelOp::getLoopBody() { return getRegion(); }
@@ -240,60 +226,37 @@ LogicalResult RangeParallelOp::verify() {
 // ****************** //
 //   TeamParallelOp   //
 // ****************** //
-
-145     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSize, "Value":$vectorLength,
-146       "ValueRange":$initVals,
-147       CArg<"function_ref<void (OpBuilder &, Location, ValueRange, ValueRange)>",
-148            "nullptr">:$bodyBuilderFn)>,
-149     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSize, "Value":$vectorLength,
-150       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-151            "nullptr">:$bodyBuilderFn)>,
+//
 
 void TeamParallelOp::build(
     OpBuilder &builder, OperationState &result,
     Value leagueSize, Value teamSize, Value vectorLength,
     ValueRange initVals,
-    function_ref<void(OpBuilder &, Location, Value, Value, Value, ValueRange)>
+    function_ref<void(OpBuilder &, Location, ValueRange)>
         bodyBuilderFn) {
-
   result.addTypes(initVals.getTypes());
 
   OpBuilder::InsertionGuard guard(builder);
-  SmallVector<Type, 4> 
-  unsigned numIVs = upperBounds.size();
-  SmallVector<Type, 8> argTypes(numIVs, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(numIVs, result.location);
+  SmallVector<Type, 8> argTypes(5, builder.getIndexType());
+  SmallVector<Location, 8> argLocs(5, result.location);
   Region *bodyRegion = result.addRegion();
   Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
 
   if (bodyBuilderFn) {
     builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments().take_front(numIVs),
-                  bodyBlock->getArguments().drop_front(numIVs));
+    bodyBuilderFn(builder, result.location, bodyBlock->getArguments());
   }
   TeamParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-void RangeParallelOp::build(
-    OpBuilder &builder, OperationState &result, ::mlir::kokkos::ExecutionSpace executionSpace, ::mlir::kokkos::ParallelLevel parallelLevel,
-    ValueRange upperBounds, function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  // Only pass a non-null wrapper if bodyBuilderFn is non-null itself. Make sure
-  // we don't capture a reference to a temporary by constructing the lambda at
-  // function level.
-  auto wrappedBuilderFn = [&bodyBuilderFn](OpBuilder &nestedBuilder,
-                                           Location nestedLoc, ValueRange ivs,
-                                           ValueRange) {
-    bodyBuilderFn(nestedBuilder, nestedLoc, ivs);
-  };
-  function_ref<void(OpBuilder &, Location, ValueRange, ValueRange)> wrapper;
-  if (bodyBuilderFn)
-    wrapper = wrappedBuilderFn;
-
-  build(builder, result, executionSpace, parallelLevel, upperBounds, ValueRange(), wrapper);
+void TeamParallelOp::build(
+    OpBuilder &builder, OperationState &result,
+    Value leagueSize, Value teamSize, Value vectorLength,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+  build(builder, result, leagueSize, teamSize, vectorLength, ValueRange(), bodyBuilderFn);
 }
 
-Region &RangeParallelOp::getLoopBody() { return getRegion(); }
+Region &TeamParallelOp::getLoopBody() { return getRegion(); }
 
 ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();

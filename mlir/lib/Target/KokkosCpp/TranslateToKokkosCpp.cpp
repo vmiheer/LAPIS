@@ -32,6 +32,8 @@
 #include "llvm/Support/FormatVariadic.h"
 #include <iostream>
 #include <utility>
+// TODO: use an LLVM map instead
+#include <unordered_map>
 
 #ifdef __unix__
 #include <unistd.h>

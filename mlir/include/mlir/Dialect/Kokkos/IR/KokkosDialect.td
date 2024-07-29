@@ -141,10 +141,18 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;
+
+  // ValueRange (body block arguments) should contain exactly 5 values:
+  // league size, team size, vector length, league rank, team rank
+
+  // Note that because we don't know the backend/architecture ahead of time,
+  // the team size and vector length passed into the body
+  // will be computed at runtime based on TeamPolicy::team_size_
+  // match the TeamParallel's input values
   let builders = [
     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSize, "Value":$vectorLength, 
       "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange, ValueRange)>",
+      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSize, "Value":$vectorLength,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
@@ -152,9 +160,6 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   ];
 
   let extraClassDeclaration = [{
-    ValueRange getInductionVars() {
-      return getBody()->getArguments();
-    }
     unsigned getNumReductions() { return getInitVals().size(); }
   }];
 
@@ -163,7 +168,7 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   let hasVerifier = 1;
 }
 
-def TeamBarrierOp : Kokkos_Op<"barrier", [HasParent<TeamParallelOp>]> {
+def TeamBarrierOp : Kokkos_Op<"barrier", [HasParent<"TeamParallelOp">]> {
   let summary = "Synchronize all threads in a team. In C++, t.team_barrier()";
   let description = [{
     Kokkos team barrier, to be called within a TeamPolicy context. All threads in
@@ -212,7 +217,7 @@ def ModifyOp : Kokkos_Op<"modify"> {
   let hasFolder = 0;
 }
 
-def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"scf::YieldOp">, RecursiveMemoryEffects, NoRegionArguments, InferTypeOpAdaptor]> {
+def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"kokkos::YieldOp">, RecursiveMemoryEffects, NoRegionArguments, InferTypeOpAdaptor]> {
   let summary = "Restricts a block to execute exactly once per team or per thread";
   let description = [{
     "Restricts a block to execute exactly once per team or per thread"
@@ -233,36 +238,16 @@ def ReduceOp : Kokkos_Op<"reduce",
 {
   let summary = "reduce operation for parallel for";
   let description = [{
-    "scf.reduce" is an operation occurring inside "scf.parallel" operations.
-    It consists of one block with two arguments which have the same type as the
-    operand of "scf.reduce".
-    
-    "scf.reduce" is used to model the value for reduction computations of a
-    "scf.parallel" operation. It has to appear as an immediate child of a
-    "scf.parallel" and is associated with a result value of its parent
-    operation.
-    
-    Association is in the order of appearance in the body where the first
-    result of a parallel loop operation corresponds to the first "scf.reduce"
-    in the operation's body region. The reduce operation takes a single
-    operand, which is the value to be used in the reduction.
-      
-    The reduce operation contains a region whose entry block expects two
-    arguments of the same type as the operand. As the iteration order of the
-    parallel loop and hence reduction order is unspecified, the result of
-    reduction may be non-deterministic unless the operation is associative and
-    commutative.
-
     The result of the reduce operation's body must have the same type as the
     operands and associated result value of the parallel loop operation.
     Example:
 
     ```mlir
     %operand = arith.constant 1.0 : f32
-    scf.reduce(%operand) : f32 {
+    kokkos.reduce(%operand) : f32 {
       ^bb0(%lhs : f32, %rhs: f32):
         %res = arith.addf %lhs, %rhs : f32
-        scf.reduce.return %res : f32
+        kokkos.yield %res : f32
     }
     ```
   }];
