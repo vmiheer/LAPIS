@@ -51,8 +51,7 @@ static TerminatorTy verifyAndGetTerminator(Operation *op, Region &region,
   }
   auto diag = op->emitOpError(errorMessage);
   if (terminatorOperation)
-    return success();
-  diag.attachNote(terminatorOperation->getLoc()) << "terminator here";
+    diag.attachNote(terminatorOperation->getLoc()) << "terminator here";
   return nullptr;
 }
 
@@ -258,7 +257,8 @@ void TeamParallelOp::build(
 
 Region &TeamParallelOp::getLoopBody() { return getRegion(); }
 
-ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) {
+/*
+ParseResult TeamParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   // Parse an opening `(` followed by induction variables followed by `)`
   SmallVector<OpAsmParser::Argument, 4> ivs;
@@ -307,20 +307,23 @@ ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) 
   mlir::kokkos::RangeParallelOp::ensureTerminator(*body, builder, result.location);
   return success();
 }
+*/
 
-void RangeParallelOp::print(OpAsmPrinter &p) {
+/*
+void TeamParallelOp::print(OpAsmPrinter &p) {
   p << " (" << getBody()->getArguments() << ") -> (" << getUpperBound() << ")";
   if (!getInitVals().empty())
     p << " init (" << getInitVals() << ")";
   p.printOptionalArrowTypeList(getResultTypes());
   p << ' ';
-  p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(), false);
   p.printOptionalAttrDict(
       (*this)->getAttrs(),
-      /*elidedAttrs=*/RangeParallelOp::getOperandSegmentSizeAttr());
+      RangeParallelOp::getOperandSegmentSizeAttr());
 }
+*/
 
-void RangeParallelOp::getSuccessorRegions(
+void TeamParallelOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
   // Both the operation itself and the region may be branching into the body or
   // back into the operation itself. It is possible for loop not to enter the
@@ -329,7 +332,8 @@ void RangeParallelOp::getSuccessorRegions(
   regions.push_back(RegionSuccessor());
 }
 
-LogicalResult RangeParallelOp::verify() {
+/*
+LogicalResult TeamParallelOp::verify() {
   // Check that there is at least one value in upperBound.
   if (getUpperBound().empty())
     return emitOpError(
@@ -383,6 +387,7 @@ LogicalResult RangeParallelOp::verify() {
   }
   return success();
 }
+*/
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Kokkos/IR/Kokkos.cpp.inc"

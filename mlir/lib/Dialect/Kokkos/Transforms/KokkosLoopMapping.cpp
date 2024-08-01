@@ -96,7 +96,7 @@ LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op
   // Create the kokkos.parallel but don't populate the body yet
   auto newOp = rewriter.create<kokkos::TeamParallelOp>(
     op.getLoc(), leagueSize, teamSize, vectorLength, op.getInitVals(), nullptr);
-  // Now inline the old loop's operations into the new loop (replacing all usages of the induction variables)
+  // Now inline the old loop's operations into the new loop.
   rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), newOp.getInductionVars());
   // Ops in this loop are executed in a Team context.
   // This means that kokkos.single is required around any ops with side effects,

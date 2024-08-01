@@ -164,8 +164,8 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   }];
 
   let hasCanonicalizer = 0;
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 0;
+  let hasVerifier = 0;
 }
 
 def TeamBarrierOp : Kokkos_Op<"barrier", [HasParent<"TeamParallelOp">]> {
