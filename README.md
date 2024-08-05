@@ -20,6 +20,9 @@ cd ..
 # Clone LAPIS
 git clone git@github.com:tensor-compilers/LAPIS.git
 
+# Clone Kokkos
+git clone -b master git@github.com:kokkos/kokkos.git
+
 # Create build/install directories
 mkdir lapisBuild
 mkdir llvmBuild
@@ -61,7 +64,6 @@ cd ..
 ```
 mkdir kokkosBuild
 mkdir kokkosInstall
-git clone -b master git@github.com:kokkos/kokkos.git
 cd kokkosBuild
 # This example enables only the Serial backend, but any backend can be used
 cmake \
