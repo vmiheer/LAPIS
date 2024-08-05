@@ -94,16 +94,17 @@ export KOKKOS_ROOT=$WORKSPACE/kokkosInstall
 export PYTHONPATH=${LLVM_INS}/python_packages/mlir_core:$PYTHONPATH
 export PYTHONPATH=${WORKSPACE}/lapisBuild/python_packages/lapis:$PYTHONPATH
 ```
-For when torch-mlir support is restored:
-```
-#export TORCH_MLIR_SRC=/home/knliege/dev/llvm-kokkos/torch-mlir-kokkos
-#export TORCH_MLIR_INS=/home/knliege/local/torch-mlir
-#export PYTHONPATH=${TORCH_MLIR_INS}/python_packages/torch_mlir:$PYTHONPATH
-```
-
 ### Run an example
 ```
 cd $WORKSPACE/LAPIS/examples
 python3 spmv_5.py
 ```
+
+<!--
+TODO: for when torch-mlir support is restored
+
+#export TORCH_MLIR_SRC=/home/knliege/dev/llvm-kokkos/torch-mlir-kokkos
+#export TORCH_MLIR_INS=/home/knliege/local/torch-mlir
+#export PYTHONPATH=${TORCH_MLIR_INS}/python_packages/torch_mlir:$PYTHONPATH
+-->
 
