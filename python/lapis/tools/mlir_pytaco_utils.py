@@ -9,6 +9,7 @@ import ctypes
 import functools
 import numpy as np
 import os
+import platform
 
 # Import MLIR related modules.
 from lapis import execution_engine
@@ -26,7 +27,12 @@ _SupportFuncLocator = Callable[[np.dtype], Tuple[_SupportFunc, _SupportFunc]]
 # supporting library.
 _SUPPORTLIB_ENV_VAR = "SUPPORTLIB"
 # The default supporting library if the environment variable is not provided.
-_DEFAULT_SUPPORTLIB = "libmlir_c_runner_utils.so"
+_DEFAULT_SUPPORTLIB = "libmlir_c_runner_utils"
+# Add correct suffix, depending on platform
+if platform.system() == 'Darwin':
+    _DEFAULT_SUPPORTLIB = _DEFAULT_SUPPORTLIB + ".dylib"
+else:
+    _DEFAULT_SUPPORTLIB = _DEFAULT_SUPPORTLIB + ".so"
 
 # The JIT compiler optimization level.
 _OPT_LEVEL = 2

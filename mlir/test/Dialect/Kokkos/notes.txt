@@ -1,0 +1,5 @@
+# Turn an input MLIR file into a FileCheck test, in-place (minus the RUN directive)
+mlir-opt input.mlir <passes> | generate-test-checks.py --source input.mlir -i
+
+Then insert on the first line:
+// RUN: mlir-opt %s <passes>

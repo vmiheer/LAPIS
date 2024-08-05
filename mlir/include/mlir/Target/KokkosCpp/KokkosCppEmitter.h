@@ -20,7 +20,7 @@
 #include <stack>
 
 namespace mlir {
-namespace emitc {
+namespace kokkos {
 
 /// Translates the given operation to Kokkos C++ code.
 LogicalResult translateToKokkosCpp(Operation *op, raw_ostream &os,

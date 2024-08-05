@@ -887,7 +887,7 @@ LogicalResult PassManager::emitKokkos(Operation *op, const char* cxxSourceFile, 
   std::error_code ec;
   llvm::raw_fd_ostream cxxFileHandle(StringRef(cxxSourceFile), ec);
   llvm::raw_fd_ostream pyFileHandle(StringRef(pySourceFile), ec);
-  LogicalResult result = emitc::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ false);
+  LogicalResult result = kokkos::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ false);
   pyFileHandle.close();
   cxxFileHandle.close();
   return result;
@@ -910,7 +910,7 @@ LogicalResult PassManager::emitKokkosSparse(Operation *op, const char* cxxSource
   std::error_code ec;
   llvm::raw_fd_ostream cxxFileHandle(StringRef(cxxSourceFile), ec);
   llvm::raw_fd_ostream pyFileHandle(StringRef(pySourceFile), ec);
-  LogicalResult result = emitc::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ true, useHierarchical, isLastKernel);
+  LogicalResult result = kokkos::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ true, useHierarchical, isLastKernel);
   pyFileHandle.close();
   cxxFileHandle.close();
   return result;
