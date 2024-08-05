@@ -2634,7 +2634,7 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
     for(char c : val)
     {
       char buf[4];
-      sprintf(buf, "%02x", (unsigned) c);
+      snprintf(buf, 4, "%02x", (unsigned) c);
       os << "\\x" << buf;
     }
     os << '"';
@@ -2904,9 +2904,6 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
     case arith::CmpIPredicate::sge:
     case arith::CmpIPredicate::uge:
       emitter << ">="; break;
-    default:
-      puts("Should never get here.");
-      return failure();
   }
   emitter << ' ';
   if(failed(emitValueWithSignednessCast(op.getRhs())))

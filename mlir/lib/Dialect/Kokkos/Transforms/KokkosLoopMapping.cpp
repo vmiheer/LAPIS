@@ -90,14 +90,17 @@ LogicalResult scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp o
   return success();
 }
 
-LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, Value leagueSize, Value teamSize, Value vectorLength)
+/*
+// Convert an scf.parallel to a TeamPolicy parallel_for, with a 1-dimensional 
+LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, Value leagueSize, Value teamSizeHint, Value vectorLengthHint)
 {
   rewriter.setInsertionPoint(op);
   // Create the kokkos.parallel but don't populate the body yet
   auto newOp = rewriter.create<kokkos::TeamParallelOp>(
-    op.getLoc(), leagueSize, teamSize, vectorLength, op.getInitVals(), nullptr);
+    op.getLoc(), leagueSize, teamSizeHint, vectorLengthHint, op.getInitVals(), nullptr);
   // Now inline the old loop's operations into the new loop.
-  rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), newOp.getInductionVars());
+  // The team's block arguments are 
+  rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), ValueRange(newOp.getInductionVars());
   // Ops in this loop are executed in a Team context.
   // This means that kokkos.single is required around any ops with side effects,
   // to make sure that they only happen once per team as intended.
@@ -126,6 +129,7 @@ LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op
   rewriter.replaceOp(op, newOp);
   return success();
 }
+*/
 
 LogicalResult scfParallelToSequential(RewriterBase& rewriter, scf::ParallelOp op)
 {
@@ -199,7 +203,7 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     op->walk([&](memref::ReallocOp) {
         canBeOffloaded = false;
     });
-    //kokkos::ExecutionSpace exec = canBeOffloaded ? kokkos::ExecutionSpace::Device : kokkos::ExecutionSpace::Host;
+    kokkos::ExecutionSpace exec = canBeOffloaded ? kokkos::ExecutionSpace::Device : kokkos::ExecutionSpace::Host;
 
     // Possible cases for exec == Device:
     //
@@ -215,9 +219,11 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     // For exec == Host, just parallelize the outermost loop with RangePolicy and serialize the inner loops.
     if(nestingLevel == 1)
     {
+      return scfParallelToKokkosRange(rewriter, op, exec, kokkos::ParallelLevel::RangePolicy);
     }
     else if(nestingLevel == 2)
     {
+      //TODO
     }
     else if(nestingLevel >= 3)
     {

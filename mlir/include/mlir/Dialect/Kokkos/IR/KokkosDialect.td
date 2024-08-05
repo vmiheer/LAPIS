@@ -134,8 +134,8 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   }];
 
   let arguments = (ins Index:$leagueSize,
-                       Index:$teamSize,
-                       Index:$vectorLength,
+                       Index:$teamSizeHint,
+                       Index:$vectorLengthHint,
                        Variadic<AnyType>:$initVals);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
@@ -150,11 +150,11 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   // will be computed at runtime based on TeamPolicy::team_size_
   // match the TeamParallel's input values
   let builders = [
-    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSize, "Value":$vectorLength, 
+    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
       "ValueRange":$initVals,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSize, "Value":$vectorLength,
+    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
   ];
@@ -260,9 +260,9 @@ def ReduceOp : Kokkos_Op<"reduce",
   ];
 
   let arguments = (ins AnyType:$operand);
-  let hasCustomAssemblyFormat = 1;
+  let hasCustomAssemblyFormat = 0;
   let regions = (region SizedRegion<1>:$reductionOperator);
-  let hasRegionVerifier = 1;
+  let hasRegionVerifier = 0;
 }
 
 def YieldOp : Kokkos_Op<"yield", [Pure, ReturnLike, Terminator,

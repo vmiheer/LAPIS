@@ -229,7 +229,7 @@ LogicalResult RangeParallelOp::verify() {
 
 void TeamParallelOp::build(
     OpBuilder &builder, OperationState &result,
-    Value leagueSize, Value teamSize, Value vectorLength,
+    Value leagueSize, Value teamSizeHint, Value vectorLengthHint,
     ValueRange initVals,
     function_ref<void(OpBuilder &, Location, ValueRange)>
         bodyBuilderFn) {
@@ -250,9 +250,9 @@ void TeamParallelOp::build(
 
 void TeamParallelOp::build(
     OpBuilder &builder, OperationState &result,
-    Value leagueSize, Value teamSize, Value vectorLength,
+    Value leagueSize, Value teamSizeHint, Value vectorLengthHint,
     function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  build(builder, result, leagueSize, teamSize, vectorLength, ValueRange(), bodyBuilderFn);
+  build(builder, result, leagueSize, teamSizeHint, vectorLengthHint, ValueRange(), bodyBuilderFn);
 }
 
 Region &TeamParallelOp::getLoopBody() { return getRegion(); }
@@ -388,6 +388,17 @@ LogicalResult TeamParallelOp::verify() {
   return success();
 }
 */
+
+LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location,
+    SingleOp::Adaptor adaptor, SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Return types are identical to operand types:
+  // arguments on executing thread are broadcast to the rest of the team or thread
+  for(auto arg : adaptor.getOperands())
+    inferredReturnTypes.push_back(arg.getType());
+  return success();
+}
+
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Kokkos/IR/Kokkos.cpp.inc"
