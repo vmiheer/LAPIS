@@ -22,8 +22,7 @@
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
-#include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h"
-#include "mlir/Pass/kmPassManager.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
@@ -55,7 +54,7 @@ getBufferizationOptions(bool analysisOnly) {
 // Pipeline implementation.
 //===----------------------------------------------------------------------===//
 
-void mlir::part_tensor::buildSparseCompiler(
+void mlir::part_tensor::buildPartSparseCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
   pm.addPass(createPartTensorConversionPass());
   pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
@@ -123,5 +122,5 @@ void mlir::part_tensor::registerPartTensorPipelines() {
       "The standard pipeline for taking sparsity-agnostic IR using the"
       " part-tensor type, and lowering it to LLVM IR with concrete"
       " representations and algorithms for sparse tensors.",
-      buildSparseCompiler);
+      buildPartSparseCompiler);
 }

@@ -14,9 +14,6 @@
 
 using namespace mlir;
 
-void registerLAPISPipelines() {
-}
-
 int main(int argc, char **argv) {
   // lapis-opt is intended to drive only passes from the custom
   // LAPIS dialects (Kokkos and PartTensor), not builtin dialects.
@@ -28,8 +25,6 @@ int main(int argc, char **argv) {
   >();
 
   // Register LAPIS pipelines and passes
-  sparse_tensor::registerSparseTensorPipelines();
-
 #ifdef ENABLE_PART_TENSOR
   part_tensor::registerPartTensorPipelines();
   mlir::registerPartTensorPasses();
