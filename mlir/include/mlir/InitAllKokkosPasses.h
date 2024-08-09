@@ -11,22 +11,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LAPIS_INITALLPASSES_H_
-#define LAPIS_INITALLPASSES_H_
+#ifndef LAPIS_INITALLKOKKOSPASSES_H
+#define LAPIS_INITALLKOKKOSPASSES_H
 
 #include "mlir/InitAllPasses.h"
-#include "mlir/Dialect/SparseTensor/Pipelines/kmPasses.h"
-
+#include "mlir/Dialect/Kokkos/Pipelines/Passes.h"
 
 namespace mlir {
 
-
 inline void registerAllKokkosPasses() {
-
   // Dialect pipelines
-  sparse_tensor::registerSparseTensorKokkosPipelines();
+  kokkos::registerKokkosPipelines();
 }
 
 } // namespace mlir
 
-#endif // LAPIS_INITALLPASSES_H_
+#endif // LAPIS_INITALLKOKKOSPASSES_H_

@@ -14,8 +14,10 @@
 #define MLIR_DIALECT_PARTTENSOR_PIPELINES_PASSES_H_
 
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
-#include "mlir/Dialect/SparseTensor/Transforms/kmPasses.h"
 #include "mlir/Pass/PassOptions.h"
+
+//for SparseParallelizationStrategy
+#include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
 
 using namespace mlir::detail;
 using namespace llvm::cl;
@@ -182,15 +184,12 @@ struct SparseCompilerOptions
 // Building and Registering.
 //===----------------------------------------------------------------------===//
 
-/// Adds the "sparse-compiler" pipeline to the `OpPassManager`.  This
-/// is the standard pipeline for taking sparsity-agnostic IR using
-/// the sparse-tensor type and lowering it to LLVM IR with concrete
-/// representations and algorithms for sparse tensors.
-void buildSparseCompiler(OpPassManager &pm,
+/// Adds the "part-compiler" pipeline to the `OpPassManager`.
+void buildPartSparseCompiler(OpPassManager &pm,
                          const SparseCompilerOptions &options);
 
 /// Registers all pipelines for the `sparse_tensor` dialect.  At present,
-/// this includes only "sparse-compiler".
+/// this includes only "part-compiler".
 void registerPartTensorPipelines();
 
 } // namespace part_tensor

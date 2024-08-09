@@ -7,12 +7,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
 #include "mlir/Dialect/Kokkos/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+#include "mlir/Dialect/SparseTensor/Transforms/Passes.h" //for SparseParallelizationStrategy
+
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -20,7 +26,9 @@ namespace mlir {
 #define GEN_PASS_DEF_KOKKOSLOOPMAPPING
 #define GEN_PASS_DEF_KOKKOSMEMORYSPACEASSIGNMENT
 #define GEN_PASS_DEF_KOKKOSDUALVIEWMANAGEMENT
- 
+
+#define GEN_PASS_DEF_SPARSEKOKKOSCODEGEN
+
 #include "mlir/Dialect/Kokkos/Transforms/Passes.h.inc"
 } // namespace mlir
 
@@ -85,6 +93,20 @@ struct KokkosDualViewManagementPass
   }
 };
 
+struct SparseKokkosCodegenPass
+    : public impl::SparseKokkosCodegenBase<SparseKokkosCodegenPass> {
+
+  SparseKokkosCodegenPass() = default;
+  SparseKokkosCodegenPass(const SparseKokkosCodegenPass& pass) = default;
+
+  void runOnOperation() override {
+    auto *ctx = &getContext();
+    RewritePatternSet patterns(ctx);
+    populateSparseKokkosCodegenPatterns(patterns);
+    (void) applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  }
+};
+
 }
 
 std::unique_ptr<Pass> mlir::createParallelUnitStepPass()
@@ -105,5 +127,10 @@ std::unique_ptr<Pass> mlir::createKokkosMemorySpaceAssignmentPass()
 std::unique_ptr<Pass> mlir::createKokkosDualViewManagementPass()
 {
   return std::make_unique<KokkosDualViewManagementPass>();
+}
+
+// Old Kokkos codegen pass
+std::unique_ptr<Pass> mlir::createSparseKokkosCodegenPass() {
+  return std::make_unique<SparseKokkosCodegenPass>();
 }
 

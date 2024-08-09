@@ -33,7 +33,9 @@ using namespace mlir::kokkos;
 
 void mlir::kokkos::buildSparseKokkosCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
-  pm.addPass(::mlir::createPartTensorConversionPass());
+#ifdef ENABLE_PART_TENSOR
+  pm.addPass(createPartTensorConversionPass());
+#endif
   pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
   pm.addPass(createSparsificationAndBufferizationPass(
       getBufferizationOptionsForSparsification(
@@ -43,6 +45,32 @@ void mlir::kokkos::buildSparseKokkosCompiler(
       options.enableBufferInitialization, options.vectorLength,
       /*enableVLAVectorization=*/options.armSVE,
       /*enableSIMDIndex32=*/options.force32BitVectorIndices));
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  pm.addNestedPass<func::FuncOp>(
+      mlir::bufferization::createFinalizingBufferizePass());
+  pm.addPass(createSparseKokkosCodegenPass());
+  pm.addNestedPass<func::FuncOp>(createConvertLinalgToLoopsPass());
+  pm.addNestedPass<func::FuncOp>(createConvertVectorToSCFPass());
+  pm.addNestedPass<func::FuncOp>(memref::createExpandReallocPass());
+  pm.addPass(memref::createExpandStridedMetadataPass());
+  pm.addPass(createLowerAffinePass());
+  pm.addPass(createReconcileUnrealizedCastsPass());
+}
+
+/*
+// Not working yet: new Kokkos dialect based pipeline.
+void mlir::kokkos::buildSparseKokkosCompiler(
+    OpPassManager &pm, const SparseCompilerOptions &options) {
+  pm.addPass(::mlir::createPartTensorConversionPass());
+  pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
+  pm.addPass(createSparsificationAndBufferizationPass(
+      getBufferizationOptionsForSparsification(
+          options.testBufferizationAnalysisOnly),
+      options.sparsificationOptions(), options.sparseTensorConversionOptions(),
+      options.createSparseDeallocs, options.enableRuntimeLibrary,
+      options.enableBufferInitialization, options.vectorLength,
+      options.armSVE,
+      options.force32BitVectorIndices));
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   pm.addNestedPass<func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
@@ -62,6 +90,7 @@ void mlir::kokkos::buildSparseKokkosCompiler(
   // output of this pipeline gets fed directly into the Kokkos C++ emitter.
   pm.addPass(createCSEPass());
 }
+*/
 
 //===----------------------------------------------------------------------===//
 // Pipeline registration.

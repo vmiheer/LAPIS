@@ -1,2 +1,0 @@
-add_subdirectory(KokkosPipelines)
-add_subdirectory(Transforms)

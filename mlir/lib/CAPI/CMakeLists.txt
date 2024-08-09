@@ -11,7 +11,8 @@ add_mlir_public_c_api_library(LapisCAPI
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRSupport
-  MLIRSparseTensorKokkosPipelines
+  MLIRKokkosPipelines
+  LAPISPass
 )
 
 lapis_target_includes(LapisCAPI)

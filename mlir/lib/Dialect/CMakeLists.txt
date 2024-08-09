@@ -1,5 +1,4 @@
 if(LAPIS_ENABLE_PART_TENSOR)
     add_subdirectory(PartTensor)
 endif()
-add_subdirectory(SparseTensor)
 add_subdirectory(Kokkos)
