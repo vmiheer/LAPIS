@@ -39,6 +39,7 @@ struct PartTensorConversionPass
     : public impl::PartTensorConversionPassBase<PartTensorConversionPass> {
 
   PartTensorConversionPass() = default;
+  PartTensorConversionPass(PartTensorDistBackend backend) : backend(backend) {}
   PartTensorConversionPass(const PartTensorConversionPass &pass) = default;
 
   void runOnOperation() override {
@@ -69,15 +70,22 @@ struct PartTensorConversionPass
     populateCallOpTypeConversionPattern(patterns, converter);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
-    populatePartTensorConversionPatterns(converter, patterns);
+    populatePartTensorConversionPatterns(converter, patterns, backend);
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
   }
+
+private:
+  PartTensorDistBackend backend;
 };
 
 } // namespace
 
 std::unique_ptr<Pass> mlir::createPartTensorConversionPass() {
   return std::make_unique<PartTensorConversionPass>();
+}
+std::unique_ptr<Pass>
+mlir::createPartTensorConversionPass(PartTensorDistBackend backend) {
+  return std::make_unique<PartTensorConversionPass>(backend);
 }
