@@ -59,6 +59,23 @@ def PartTensor_GetPartitionsOp : PartTensor_Op<"get_partitions", [Pure]>,
   let assemblyFormat =
       "$primary attr-dict `:` type($primary) `->` type($tuples)";
 }
+ def PartTensor_GetActiveMaskOp : PartTensor_Op<"get_active_mask">,
+ 	Arguments<(ins AnyTensor:$partTensor,
+        AnyStridedMemRefOfRank<1>:$tupleList, Index:$dim)>,
+	Results<(outs AnyStridedMemRefOfRank<1>:$result)> {
+		let summary = "get active mask for a given part tensor across given"
+            "dimension";
+		let description = [{
+			This operation takes in parttensor (which has sparse tensor
+            partitions), a partspec and a dimension and returns list of
+            coordinates representing projection of sparse tensor on that
+            dimension.
+		}];
+		// %active_mask = partition.get_active_mask(%part_tensor,
+        //     %part_spec, %dim) -> memref<index>
+		let assemblyFormat = "$partTensor `,` $tupleList attr-dict `,` $dim `:`"
+            "type($partTensor) `,` type($tupleList) `->` type($result)";
+		}
  def PartTensor_GetSliceOp : PartTensor_Op<"get_slice">,
  	Arguments<(ins AnyTensor:$Parts, AnyStridedMemRefOfRank<1>:$tupleList)>,
 	Results<(outs AnyTensor:$result)> {
