@@ -85,6 +85,24 @@ def PartTensor_GetPartitionsOp : PartTensor_Op<"get_partitions", [Pure]>,
 			}];
 		//%slice = partition.get_slice(%total_iteration_space,%partition) -> tensor<2xindex>
 		let assemblyFormat = " $Parts `,` $tupleList attr-dict `:` type($Parts) `,` type($tupleList) `->` type($result)";
+        }
+ def PartTensor_GetSliceForActiveMaskOp :
+     PartTensor_Op<"get_slice_for_active_mask"> {
+        let arguments = (ins AnyTensor:$Parts,
+            AnyStridedMemRefOfRank<1>:$tupleList,
+            AnyStridedMemRefOfRank<1>:$activeMask,
+            Index:$activeMaskDim
+        );
+        let results = (outs AnyTensor:$result);
+		let summary = "get slice";
+		let description = [{
+			This operation will take tuples and output one tensor
+		}];
+		//%slice = partition.get_slice(%total_iteration_space,%partition) -> tensor<2xindex>
+		let assemblyFormat = " $Parts `,` $tupleList `,` $activeMask `,` "
+            "$activeMaskDim "
+            "attr-dict `:` type($Parts) `,` type($tupleList)  `,` "
+            "type($activeMask) `,` type($activeMaskDim) `->` type($result)";
 		}
  def PartTensor_SetSliceOp : PartTensor_Op<"set_slice">,
      Arguments<(ins AnyTensor:$in_part_tensor, AnyStridedMemRefOfRank<1>:$part_spec, AnyTensor:$sparse_tensor)>,
