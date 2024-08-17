@@ -95,6 +95,64 @@ public:
 };
 
 template <PartTensorDistBackend backend>
+class PartTensorGetActiveMaskConverter
+    : public OpConversionPattern<GetActiveMaskOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(GetActiveMaskOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resType = op.getType();
+    const Type crdTp = cast<ShapedType>(resType).getElementType();
+    Location loc = op->getLoc();
+    MemRefType callRetType = mlir::sparse_tensor::get1DMemRefType(crdTp, false);
+    SmallVector<Value> operands{adaptor.getOperands()[0],
+                                adaptor.getOperands()[1],
+                                adaptor.getOperands()[2]};
+    auto fn = mlir::sparse_tensor::getFunc(
+        op->getParentOfType<ModuleOp>(),
+        getBackendPrefix(backend) + "getActiveMask", callRetType, operands,
+        mlir::sparse_tensor::EmitCInterface::On);
+    Value callRet =
+        rewriter.create<func::CallOp>(loc, callRetType, fn, operands)
+            .getResult(0);
+    if (resType != callRetType)
+      callRet = rewriter.create<memref::CastOp>(loc, resType, callRet);
+    rewriter.replaceOp(op, callRet);
+    return success();
+  }
+};
+
+template <PartTensorDistBackend backend>
+class PartTensorGetSliceForActiveMask
+    : public OpConversionPattern<GetSliceForActiveMaskOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(GetSliceForActiveMaskOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Note using the namespace sparse_tensor here is not significant.
+    // It just happens to be convenient to reuse the existing utility.
+    Type resType = sparse_tensor::getOpaquePointerType(rewriter);
+    Type origResType = op.getType();
+    Location loc = op->getLoc();
+    // replace %a = part_tensor.get_slice : part_tensor, ... -> sparse_tensor
+    // with    %a1 = call @getSlice(%a) : (partTensor) -> i8*
+    //         %a2 = unrealized_conversion_cast %a1 : i8* to %sparseTensor
+    Value callRet =
+        createFuncCall(
+            rewriter, loc, getBackendPrefix(backend) + "getSliceForActiveMask",
+            resType, adaptor.getOperands(), sparse_tensor::EmitCInterface::On)
+            .getResult(0);
+    callRet =
+        rewriter.create<UnrealizedConversionCastOp>(loc, origResType, callRet)
+            .getResult(0);
+    rewriter.replaceOp(op, callRet);
+    return success();
+  }
+};
+
+template <PartTensorDistBackend backend>
 class PartTensorGetSliceConverter : public OpConversionPattern<GetSliceOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -238,6 +296,10 @@ void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
   } break;
   case PartTensorDistBackend::kMPI: {
     patterns.add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kMPI>>(
+        typeConverter, patterns.getContext());
+    patterns.add<PartTensorGetActiveMaskConverter<PartTensorDistBackend::kMPI>>(
+        typeConverter, patterns.getContext());
+    patterns.add<PartTensorGetSliceForActiveMask<PartTensorDistBackend::kMPI>>(
         typeConverter, patterns.getContext());
     patterns.add<PartTensorGetSliceConverter<PartTensorDistBackend::kMPI>>(
         typeConverter, patterns.getContext());
