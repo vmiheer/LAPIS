@@ -103,9 +103,8 @@ public:
   matchAndRewrite(GetActiveMaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Type resType = op.getType();
-    const Type crdTp = cast<ShapedType>(resType).getElementType();
     Location loc = op->getLoc();
-    MemRefType callRetType = mlir::sparse_tensor::get1DMemRefType(crdTp, false);
+    Type callRetType = resType;
     SmallVector<Value> operands{adaptor.getOperands()[0],
                                 adaptor.getOperands()[1],
                                 adaptor.getOperands()[2]};

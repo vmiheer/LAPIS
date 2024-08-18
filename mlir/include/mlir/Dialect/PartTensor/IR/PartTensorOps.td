@@ -62,7 +62,7 @@ def PartTensor_GetPartitionsOp : PartTensor_Op<"get_partitions", [Pure]>,
  def PartTensor_GetActiveMaskOp : PartTensor_Op<"get_active_mask">,
  	Arguments<(ins AnyTensor:$partTensor,
         AnyStridedMemRefOfRank<1>:$tupleList, Index:$dim)>,
-	Results<(outs AnyStridedMemRefOfRank<1>:$result)> {
+	Results<(outs Index:$result)> {
 		let summary = "get active mask for a given part tensor across given"
             "dimension";
 		let description = [{
@@ -90,7 +90,7 @@ def PartTensor_GetPartitionsOp : PartTensor_Op<"get_partitions", [Pure]>,
      PartTensor_Op<"get_slice_for_active_mask"> {
         let arguments = (ins AnyTensor:$Parts,
             AnyStridedMemRefOfRank<1>:$tupleList,
-            AnyStridedMemRefOfRank<1>:$activeMask,
+            Index:$activeMask,
             Index:$activeMaskDim
         );
         let results = (outs AnyTensor:$result);
