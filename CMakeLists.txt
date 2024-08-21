@@ -92,6 +92,9 @@ if(MLIR_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()
 
+# This should be at the end after traversal of all subdirectories.
+add_subdirectory(cmake)
+
 enable_testing()
 add_subdirectory(tests)
 

@@ -1,0 +1,6 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(LLVM)
+find_dependency(MLIR)
+set(MLIR_EXPORTED_TARGETS "@MLIR_EXPORTS@")
