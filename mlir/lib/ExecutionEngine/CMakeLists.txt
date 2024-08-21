@@ -9,4 +9,3 @@ endif()
 add_mlir_library(LapisPartTensorExecutionEngine
   PartTensorRuntime.cpp
   )
-lapis_target_includes(LapisPartTensorExecutionEngine)

@@ -84,23 +84,6 @@ include_directories(${STANDALONE_BINARY_DIR}/include)
 set(LAPIS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(LAPIS_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
-function(lapis_target_includes target)
-  set(_dirs
-    $<BUILD_INTERFACE:${MLIR_INCLUDE_DIRS}>
-    $<BUILD_INTERFACE:${LAPIS_SOURCE_DIR}/mlir/include>
-    $<BUILD_INTERFACE:${LAPIS_BINARY_DIR}/mlir/include>
-  )
-  # In LLVM parlance, the actual target may just be an interface and may not
-  # be responsible for actually compiling anything. The corresponding obj.
-  # target, when present, is just used for compilation and does not
-  # contribute to the interface properties.
-  # TODO: Normalize this upstream.
-  target_include_directories(${target} PUBLIC ${_dirs})
-  if(TARGET obj.${target})
-    target_include_directories(obj.${target} PRIVATE ${_dirs})
-  endif()
-endfunction()
-
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 

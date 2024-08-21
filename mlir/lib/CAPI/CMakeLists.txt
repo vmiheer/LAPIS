@@ -15,5 +15,4 @@ add_mlir_public_c_api_library(LapisCAPI
   LAPISPass
 )
 
-lapis_target_includes(LapisCAPI)
 add_subdirectory(IR)
