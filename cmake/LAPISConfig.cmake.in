@@ -3,4 +3,5 @@
 include(CMakeFindDependencyMacro)
 find_dependency(LLVM)
 find_dependency(MLIR)
+set(LAPIS_INCLUDE_DIRS "@LAPIS_CONFIG_INCLUDE_DIRS@")
 set(MLIR_EXPORTED_TARGETS "@MLIR_EXPORTS@")
