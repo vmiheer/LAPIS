@@ -1,10 +1,4 @@
 //===- PartTensorOps.td - PartTensor dialect ops ------*- tablegen -*-===//
-
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
 //
 // The following operations bootstrap working with partition solely
 // within the Linalg dialect. They provide temporary bridges between a

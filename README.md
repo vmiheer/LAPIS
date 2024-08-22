@@ -20,7 +20,7 @@ cd ..
 # Clone LAPIS
 git clone git@github.com:tensor-compilers/LAPIS.git
 
-# Clone Kokkos
+# Clone Kokkos (master branch contains latest release)
 git clone -b master git@github.com:kokkos/kokkos.git
 
 # Create build/install directories

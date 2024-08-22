@@ -1,23 +1,10 @@
 //===- Storage.h -    Partitioned tensor representation       ---*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
 // This file is part of the lightweight runtime support library for partitioned
 // sparse tensor manipulations.  The functionality of the support library is
 // meant to simplify benchmarking, testing, and debugging MLIR code operating on
 // sparse tensors.  However, the provided functionality is **not** part of
 // core MLIR itself.
-//
-// This file contains definitions for the following classes:
-//
-// * `SparseTensorStorageBase`
-// * `SparseTensorStorage<P, I, V>`
-// * `SparseTensorEnumeratorBase<V>`
-// * `SparseTensorNNZ`
 //
 // Ideally we would split the storage classes and enumerator classes
 // into separate files, to improve legibility.  But alas: because these

@@ -1,4 +1,7 @@
-//===- Passes.h - Sparse tensor pipeline entry points -----------*- C++ -*-===//
+//===- Passes.h - Part tensor pipeline entry points -----------*- C++ -*-===//
+//
+// **** This file has been modified from its original in llvm-project ****
+// Original file was mlir/include/mlir/Dialect/SparseTensor/Pipelines/Passes.h
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.

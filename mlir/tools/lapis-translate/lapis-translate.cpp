@@ -1,4 +1,7 @@
-//===- mlir-translate.cpp - MLIR Translate Driver -------------------------===//
+//===- lapis-translate.cpp - MLIR Translate Driver -------------------------===//
+//
+// **** This file has been modified from its original in llvm-project ****
+// Original file was mlir/tools/mlir-translate/mlir-translate.cpp
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
