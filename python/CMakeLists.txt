@@ -27,7 +27,6 @@ declare_mlir_python_sources(LapisPythonSources.linalg_kokkos_backend
     linalg_kokkos_backend/abc.py
     linalg_kokkos_backend/KokkosBackend.py
     linalg_kokkos_backend/KokkosBackendJustMLIRDump.py
-    _mlir_libs/_mlir/passmanager.pyi
 )
 
 declare_mlir_python_sources(LapisPythonSources.tools
