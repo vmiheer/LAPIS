@@ -1,10 +1,4 @@
-//===- SparseTensorRuntime.h - SparseTensor runtime support lib -*- C++ -*-===//
-//
-// This header file provides the enums and functions which comprise the
-// public API of the `ExecutionEngine/SparseTensorRuntime.cpp` runtime
-// support library for the SparseTensor dialect.
-//
-//===----------------------------------------------------------------------===//
+//===- PartTensorRuntime.h - PartTensor runtime support lib -*- C++ -*-===//
 
 #ifndef MLIR_EXECUTIONENGINE_PARTTENSORRUNTIME_H
 #define MLIR_EXECUTIONENGINE_PARTTENSORRUNTIME_H
