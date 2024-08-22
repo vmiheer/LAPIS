@@ -1,5 +1,14 @@
 //===- lapis-opt.cpp - LAPIS pass Driver -------------------------===//
 //
+// **** This file has been modified from its original in llvm-project ****
+// Original file was mlir/tools/mlir-opt/mlir-opt.cpp
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 #include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
 #include "mlir/Dialect/Kokkos/Pipelines/Passes.h"
 #include "mlir/Dialect/Kokkos/Transforms/Passes.h"

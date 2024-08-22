@@ -1,3 +1,18 @@
+//===- Passes.h - Kokkos pipeline entry points -----------*- C++ -*-===//
+//
+// **** This file has been modified from its original in llvm-project ****
+// Original file was mlir/include/mlir/Dialect/SparseTensor/Pipelines/Passes.h
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This header file defines prototypes of all sparse tensor pipelines.
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef MLIR_KOKKOS_PIPELINES_PASSES_H_
 #define MLIR_KOKKOS_PIPELINES_PASSES_H_
 

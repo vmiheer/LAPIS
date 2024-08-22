@@ -1,5 +1,8 @@
 //===- TranslateToCpp.cpp - Translating to C++ calls ----------------------===//
 //
+// **** This file has been modified from its original in llvm-project ****
+// This file was based on mlir/lib/Target/Cpp/TranslateToCpp.cpp
+//
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
