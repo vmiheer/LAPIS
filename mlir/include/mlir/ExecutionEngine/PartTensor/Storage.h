@@ -178,7 +178,7 @@ PartTensorStorage<P, I, V> *PartTensorStorage<P, I, V>::newFromCOO(
   assert(partDataLength > 0 && "Got zero for partition data");
   assert(dimRank > 0 && "Got zero for dimension rank");
   std::vector<uint64_t> dimSizes(dimRank);
-  auto numPartitions = partDataLength / (dimRank * 2);
+  unsigned long numPartitions = partDataLength / (dimRank * 2);
   assert(partDataLength % (dimRank * 2) == 0 &&
          "Partition data len must be a multiple of dimension rank");
 
