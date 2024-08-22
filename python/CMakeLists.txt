@@ -57,7 +57,9 @@ declare_mlir_python_extension(LapisPythonExtensions.Main
     LLVMSupport
 )
 
-target_include_directories(LapisPythonExtensions.Main INTERFACE ${LAPIS_SOURCE_DIR}/mlir/include ${LAPIS_SOURCE_DIR}/mlir/include)
+target_include_directories(LapisPythonExtensions.Main INTERFACE
+  $<BUILD_INTERFACE:${LAPIS_SOURCE_DIR}/mlir/include>
+  $<BUILD_INTERFACE:${LAPIS_BINARY_DIR}/mlir/include>)
 target_link_libraries(LapisPythonExtensions.Main INTERFACE MLIRPythonExtension.Core LAPISCAPIIR)
 
 ################################################################################
