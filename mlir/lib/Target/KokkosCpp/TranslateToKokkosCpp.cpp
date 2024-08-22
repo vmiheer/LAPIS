@@ -1,4 +1,4 @@
-//===- TranslateToCpp.cpp - Translating to C++ calls ----------------------===//
+//===- TranslateToKokkosCpp.cpp - Translat MLIR to Kokkos -----------------===//
 //
 // **** This file has been modified from its original in llvm-project ****
 // This file was based on mlir/lib/Target/Cpp/TranslateToCpp.cpp
