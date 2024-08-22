@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -part-compiler
+// RUN: lapis-opt %s -part-compiler
 
 #SortedCOO = #sparse_tensor.encoding<{
   lvlTypes = [ "compressed-nu", "singleton" ]
