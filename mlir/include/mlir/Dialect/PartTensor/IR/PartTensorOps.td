@@ -53,6 +53,23 @@ def PartTensor_GetPartitionsOp : PartTensor_Op<"get_partitions", [Pure]>,
   let assemblyFormat =
       "$primary attr-dict `:` type($primary) `->` type($tuples)";
 }
+ def PartTensor_GetActiveMaskOp : PartTensor_Op<"get_active_mask">,
+ 	Arguments<(ins AnyTensor:$partTensor,
+        AnyStridedMemRefOfRank<1>:$tupleList, Index:$dim)>,
+	Results<(outs Index:$result)> {
+		let summary = "get active mask for a given part tensor across given"
+            "dimension";
+		let description = [{
+			This operation takes in parttensor (which has sparse tensor
+            partitions), a partspec and a dimension and returns list of
+            coordinates representing projection of sparse tensor on that
+            dimension.
+		}];
+		// %active_mask = partition.get_active_mask(%part_tensor,
+        //     %part_spec, %dim) -> memref<index>
+		let assemblyFormat = "$partTensor `,` $tupleList attr-dict `,` $dim `:`"
+            "type($partTensor) `,` type($tupleList) `->` type($result)";
+		}
  def PartTensor_GetSliceOp : PartTensor_Op<"get_slice">,
  	Arguments<(ins AnyTensor:$Parts, AnyStridedMemRefOfRank<1>:$tupleList)>,
 	Results<(outs AnyTensor:$result)> {
@@ -62,6 +79,24 @@ def PartTensor_GetPartitionsOp : PartTensor_Op<"get_partitions", [Pure]>,
 			}];
 		//%slice = partition.get_slice(%total_iteration_space,%partition) -> tensor<2xindex>
 		let assemblyFormat = " $Parts `,` $tupleList attr-dict `:` type($Parts) `,` type($tupleList) `->` type($result)";
+        }
+ def PartTensor_GetSliceForActiveMaskOp :
+     PartTensor_Op<"get_slice_for_active_mask"> {
+        let arguments = (ins AnyTensor:$Parts,
+            AnyStridedMemRefOfRank<1>:$tupleList,
+            Index:$activeMask,
+            Index:$activeMaskDim
+        );
+        let results = (outs AnyTensor:$result);
+		let summary = "get slice";
+		let description = [{
+			This operation will take tuples and output one tensor
+		}];
+		//%slice = partition.get_slice(%total_iteration_space,%partition) -> tensor<2xindex>
+		let assemblyFormat = " $Parts `,` $tupleList `,` $activeMask `,` "
+            "$activeMaskDim "
+            "attr-dict `:` type($Parts) `,` type($tupleList)  `,` "
+            "type($activeMask) `,` type($activeMaskDim) `->` type($result)";
 		}
  def PartTensor_SetSliceOp : PartTensor_Op<"set_slice">,
      Arguments<(ins AnyTensor:$in_part_tensor, AnyStridedMemRefOfRank<1>:$part_spec, AnyTensor:$sparse_tensor)>,
