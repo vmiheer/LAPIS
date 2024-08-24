@@ -40,9 +40,9 @@ int main(int argc, char **argv) {
       mlir::arith::ArithDialect, mlir::bufferization::BufferizationDialect,
       mlir::func::FuncDialect, mlir::linalg::LinalgDialect,
       mlir::memref::MemRefDialect, mlir::sparse_tensor::SparseTensorDialect,
-      mlir::tensor::TensorDialect,
+      mlir::tensor::TensorDialect, mlir::part_tensor::PartTensorDialect,
 #endif
-      mlir::kokkos::KokkosDialect, mlir::part_tensor::PartTensorDialect>();
+      mlir::kokkos::KokkosDialect>();
 
   // Register LAPIS pipelines and passes
 #ifdef ENABLE_PART_TENSOR
