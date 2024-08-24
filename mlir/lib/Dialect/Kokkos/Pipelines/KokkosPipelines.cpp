@@ -34,7 +34,7 @@ using namespace mlir::kokkos;
 void mlir::kokkos::buildSparseKokkosCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
 #ifdef ENABLE_PART_TENSOR
-  pm.addPass(createPartTensorConversionPass());
+  pm.addPass(createPartTensorConversionPass(options.partTensorBackend));
 #endif
   pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
   pm.addPass(createSparsificationAndBufferizationPass(
