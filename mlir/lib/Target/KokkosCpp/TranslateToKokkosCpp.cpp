@@ -2471,17 +2471,19 @@ void KokkosCppEmitter::populateSparseSupportFunctions()
     };
   registerCIface(false, "newSparseTensor");
   for (std::string funcName :
-       {"getPartitions",       "updateSlice",         "sparseCoordinates0",
-        "sparseCoordinates8",  "sparseCoordinates16", "sparseCoordinates32",
-        "sparseCoordinates64", "sparsePositions0",    "sparsePositions8",
-        "sparsePositions16",   "sparsePositions32",   "sparsePositions64",
-        "sparseValuesBF16",    "sparseValuesC32",     "sparseValuesC64",
-        "sparseValuesF16",     "sparseValuesF32",     "sparseValuesF64",
-        "sparseValuesI8",      "sparseValuesI16",     "sparseValuesI32",
-        "sparseValuesI64"}) {
+       {"getPartitions",       "mpi_getPartitions",   "updateSlice",
+        "mpi_setSlice",        "sparseCoordinates0",  "sparseCoordinates8",
+        "sparseCoordinates16", "sparseCoordinates32", "sparseCoordinates64",
+        "sparsePositions0",    "sparsePositions8",    "sparsePositions16",
+        "sparsePositions32",   "sparsePositions64",   "sparseValuesBF16",
+        "sparseValuesC32",     "sparseValuesC64",     "sparseValuesF16",
+        "sparseValuesF32",     "sparseValuesF64",     "sparseValuesI8",
+        "sparseValuesI16",     "sparseValuesI32",     "sparseValuesI64"}) {
     registerCIface(true, funcName);
   }
-  for (std::string funcName : {"getSlice", "krs_getRank"}) {
+  for (std::string funcName :
+       {"mpi_getActiveMask", "getSlice", "mpi_getSlice",
+        "mpi_getSliceForActiveMask", "krs_getRank", "mpi_getRank"}) {
     registerCIface(false, funcName);
   }
   registerCIface(false, "lexInsertI8");
