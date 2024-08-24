@@ -17,9 +17,12 @@
 #define MLIR_KOKKOS_PIPELINES_PASSES_H_
 
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
-#include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
 #include "mlir/Dialect/Kokkos/Transforms/Passes.h"
+#include "mlir/Dialect/SparseTensor/Transforms/Passes.h"
 #include "mlir/Pass/PassOptions.h"
+#if defined(ENABLE_PART_TENSOR)
+#include "mlir/Dialect/PartTensor/Transforms/Passes.h"
+#endif
 
 using namespace mlir::detail;
 using namespace llvm::cl;
@@ -154,6 +157,19 @@ struct SparseCompilerOptions
       *this, "enable-gpu-libgen",
       desc("Enables GPU acceleration by means of direct library calls (like "
            "cuSPARSE)")};
+
+#if defined(ENABLE_PART_TENSOR)
+  PassOptions::Option<mlir::PartTensorDistBackend> partTensorBackend{
+      *this, "pt-backend",
+      ::llvm::cl::desc("Backend to use for part tensor communication"),
+      ::llvm::cl::init(mlir::PartTensorDistBackend::kNone),
+      llvm::cl::values(
+          clEnumValN(mlir::PartTensorDistBackend::kNone, "none",
+                     "Turn off part tensor distribution."),
+          clEnumValN(mlir::PartTensorDistBackend::kMPI, "mpi", "Use Mpi."),
+          clEnumValN(mlir::PartTensorDistBackend::kKRS, "krs",
+                     "Use Kokkos Remote Spaces."))};
+#endif
 
   /// Projects out the options for `createSparsificationPass`.
   SparsificationOptions sparsificationOptions() const {
