@@ -1,0 +1,10 @@
+# Turn an input MLIR file into a FileCheck test, in-place (minus the RUN directive)
+# This modifies input.mlir by adding CHECK directives.
+lapis-opt input.mlir <passes> | generate-test-checks.py --source input.mlir -i
+
+# Same, not in-place (input.mlir not modified).
+# Instead, input_with_test.mlir created with CHECK directives.
+lapis-opt input.mlir <passes> | generate-test-checks.py --source input.mlir &> input_with_test.mlir
+
+Then insert this on the first line (this tells lit what to run)
+// RUN: %lapis-opt %s <passes>
