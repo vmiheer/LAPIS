@@ -11,9 +11,9 @@ target_link_libraries(lapis-opt
   MLIRParser
   LAPISPass
   MLIRSPIRVDialect
-  MLIRTranslateLib
   MLIRSupport
   MLIROptLib
   )
 
 mlir_check_link_libraries(lapis-opt)
+install(TARGETS lapis-opt)

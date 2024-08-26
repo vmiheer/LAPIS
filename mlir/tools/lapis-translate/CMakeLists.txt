@@ -23,3 +23,4 @@ target_link_libraries(lapis-translate
   )
 
 mlir_check_link_libraries(lapis-translate)
+install(TARGETS lapis-translate)
