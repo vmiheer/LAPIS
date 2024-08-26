@@ -123,3 +123,6 @@ TODO: for when torch-mlir support is restored
 #export PYTHONPATH=${TORCH_MLIR_INS}/python_packages/torch_mlir:$PYTHONPATH
 -->
 
+## Developer Guide
+### Adding tests
+see [AddingNewTests.txt](mlir/tests/AddingNewTests.txt).
