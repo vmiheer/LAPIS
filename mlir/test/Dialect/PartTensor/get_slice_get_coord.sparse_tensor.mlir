@@ -1,4 +1,4 @@
-// RUN: lapis-opt %s --part-compiler=enable-runtime-library=true
+// RUN: %lapis-opt %s --part-compiler=enable-runtime-library=true
 // this is test case for goal for week of 11/9. This is how the lowered code
 // should look like.
 

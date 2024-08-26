@@ -1,4 +1,4 @@
-// RUN: lapis-opt %s | FileCheck %s
+// RUN: %lapis-opt %s | FileCheck %s
 // this is test case for goal for week of 11/9
 
 #SortedCOO = #sparse_tensor.encoding<{

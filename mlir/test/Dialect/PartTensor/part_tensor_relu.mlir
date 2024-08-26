@@ -1,4 +1,4 @@
-// RUN: lapis-opt %s -part-compiler
+// RUN: %lapis-opt %s -part-compiler
 // This is the example asked by Prof. Nasko as test for first part_tensor
 // operation. This example should (will) be parsed without issue by lapis-opt
 // (without any options.)
