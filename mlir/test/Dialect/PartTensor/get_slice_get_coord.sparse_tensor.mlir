@@ -3,7 +3,7 @@
 // should look like.
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  lvlTypes = [ "compressed", "singleton" ]
 }>
 module {
   func.func @dumpPartitions(%A: !llvm.ptr) -> memref<?xindex> {

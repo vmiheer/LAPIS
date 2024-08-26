@@ -4,7 +4,7 @@
 // (without any options.)
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  lvlTypes = [ "compressed", "singleton" ]
 }>
 #partEncoding = #part_tensor.encoding<{
   partConst = 1,
