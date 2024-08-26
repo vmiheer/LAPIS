@@ -1,4 +1,4 @@
-// RUN: lapis-opt %s --parallel-unit-step
+// RUN: %lapis-opt %s --parallel-unit-step
 module {
 // CHECK-LABEL:   func.func @myfunc(
 // CHECK-SAME:                      %[[VAL_0:.*]]: memref<?x?x?xf64>,

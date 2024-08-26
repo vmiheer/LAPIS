@@ -1,10 +1,10 @@
-// RUN: lapis-opt %s
+// RUN: %lapis-opt %s
 // This is the how the lowered file by same name without `.sparse_tensor.`
 // suffix should look like, This file need to ideally compile all the way to
 // llvm and run
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  lvlTypes = [ "compressed", "singleton" ]
 }>
 #partEncoding = #part_tensor.encoding<{
   partConst = 1,

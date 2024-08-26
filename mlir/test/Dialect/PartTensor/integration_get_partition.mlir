@@ -1,5 +1,5 @@
 // DEFINE: %{option} = enable-runtime-library=true
-// DEFINE: %{compile} = lapis-opt %s --part-compiler=%{option}
+// DEFINE: %{compile} = %lapis-opt %s --part-compiler=%{option}
 // DEFINE: %{run} = mlir-cpu-runner \
 // DEFINE:  -e entry -entry-point-result=void  \
 // DEFINE:  -shared-libs=%mlir_lib_dir/libmlir_c_runner_utils%shlibext,%mlir_lib_dir/libmlir_runner_utils%shlibext | \
@@ -7,7 +7,7 @@
 // RUN: %{compile} | %{run}
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  lvlTypes = [ "compressed", "singleton" ]
 }>
 #partEncoding = #part_tensor.encoding<{
   partConst = 1,

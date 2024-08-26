@@ -104,6 +104,11 @@ tests/lapis/
 tests/*.mlir
 tests/*.tns
 
+# Other test artifacts
+mlir/test/Dialect/*/Output
+mlir/test/Dialect/*/.*.txt
+mlir/test/.*.txt
+
 # Pip artifacts.
 *.egg-info
 *.whl

@@ -1,8 +1,8 @@
-// RUN: lapis-opt %s | FileCheck %s
+// RUN: %lapis-opt %s | FileCheck %s
 // this is test case for goal for week of 11/9
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  lvlTypes = [ "compressed", "singleton" ]
 }>
 #partEncoding = #part_tensor.encoding<{
   partConst = 1,

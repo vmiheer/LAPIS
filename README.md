@@ -99,6 +99,21 @@ export PYTHONPATH=${WORKSPACE}/lapisBuild/python_packages/lapis:$PYTHONPATH
 cd $WORKSPACE/LAPIS/examples
 python3 spmv_5.py
 ```
+### Run pass tests
+Prerequisite: install ``lit``
+```
+pip install --user lit
+```
+Run all tests:
+```
+cd $WORKSPACE/lapisBuild/mlir/test
+lit -v .
+```
+Run tests for a specific dialect (e.g. Kokkos):
+```
+cd $WORKSPACE/lapisBuild/mlir/test/Dialect
+lit -v Kokkos
+```
 
 <!--
 TODO: for when torch-mlir support is restored
