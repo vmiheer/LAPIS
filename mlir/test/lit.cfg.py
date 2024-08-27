@@ -1,6 +1,6 @@
 import lit.formats
 
-config.name = "LAPIS Pass Tests"
+config.name = "LAPIS Dialect Tests"
 config.test_format = lit.formats.ShTest(True)
 
 config.suffixes = ['.mlir']

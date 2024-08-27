@@ -93,14 +93,16 @@ export KOKKOS_ROOT=$WORKSPACE/kokkosInstall
 
 export PYTHONPATH=${LLVM_INS}/python_packages/mlir_core:$PYTHONPATH
 export PYTHONPATH=${WORKSPACE}/lapisBuild/python_packages/lapis:$PYTHONPATH
+# This is just for LLVM's custom FileCheck (used for running our tests)
+export PATH=$PATH:${WORKSPACE}/llvmBuild/bin
 ```
 ### Run an example
 ```
 cd $WORKSPACE/LAPIS/examples
 python3 spmv_5.py
 ```
-### Run pass tests
-Prerequisite: install ``lit``
+### Run dialect tests
+Prerequisite: install ``lit`` testing utility
 ```
 pip install --user lit
 ```
