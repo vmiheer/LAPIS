@@ -93,6 +93,7 @@ export KOKKOS_ROOT=$WORKSPACE/kokkosInstall
 
 export PYTHONPATH=${LLVM_INS}/python_packages/mlir_core:$PYTHONPATH
 export PYTHONPATH=${WORKSPACE}/lapisBuild/python_packages/lapis:$PYTHONPATH
+export PATH=$PATH:${WORKSPACE}/llvmBuild/bin
 ```
 ### Run an example
 ```
@@ -100,7 +101,7 @@ cd $WORKSPACE/LAPIS/examples
 python3 spmv_5.py
 ```
 ### Run pass tests
-Prerequisite: install ``lit``
+Prerequisite: install ``lit`` and ``filecheck`` utilities
 ```
 pip install --user lit
 ```
