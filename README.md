@@ -100,8 +100,8 @@ export PATH=$PATH:${WORKSPACE}/llvmBuild/bin
 cd $WORKSPACE/LAPIS/examples
 python3 spmv_5.py
 ```
-### Run pass tests
-Prerequisite: install ``lit`` and ``filecheck`` utilities
+### Run dialect tests
+Prerequisite: install ``lit`` testing utility
 ```
 pip install --user lit
 ```
