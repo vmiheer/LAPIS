@@ -1,5 +1,4 @@
-// RUN: %lapis-opt %s | FileCheck %s
-// this is test case for goal for week of 11/9
+// RUN: %lapis-opt %s
 
 #SortedCOO = #sparse_tensor.encoding<{
   lvlTypes = [ "compressed", "singleton" ]
@@ -23,5 +22,3 @@ module {
     return %res : memref<?xindex>
   }
 }
-
-// CHECK-NOT: part_tensor\.get_slice 

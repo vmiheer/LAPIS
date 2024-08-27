@@ -26,7 +26,6 @@
   doc = "X(i,j) = max(X(i,j), 0)"
 }
 module {
-  func.func private @printMemrefF32(%ptr : tensor<*xf32>)
   func.func @spmv(%A: tensor<?x?xf32, #SortedCOO>,
                     %B: tensor<?xf32, #dense>,
                     %C: tensor<?xf32, #dense>) -> tensor<?xf32, #dense> {
