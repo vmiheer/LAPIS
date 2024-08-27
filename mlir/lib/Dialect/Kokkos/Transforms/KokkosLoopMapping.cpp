@@ -65,9 +65,9 @@ LogicalResult scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp o
     // to make sure that they only happen once per thread as intended.
     SmallVector<Operation*> opsToWrap;
     // The following is careful to not mutate a sequence (block's operations) while iterating over it.
-    // Instead, it makes a list of ops to replace upfront and then doing all the replacements without iterating.
+    // Instead, it makes a list of ops to replace upfront and then does all replacements without iterating.
     for(Operation& op : newOp.getBody()->getOperations()) {
-      // TODO: find a more rigorous way to figure out if an op has side effects that we care about
+      // TODO: find a more rigorous way to figure out if an op has non-idempotent side effects
       if(isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op)) {
         opsToWrap.push_back(&op);
       }
