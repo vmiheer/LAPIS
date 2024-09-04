@@ -81,7 +81,7 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
      RecursiveMemoryEffects,
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
-     SingleBlockImplicitTerminator<"scf::YieldOp">]> {
+     SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
   let summary = "Kokkos base parallel for operation";
   let description = [{
   }];
@@ -122,7 +122,7 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
      RecursiveMemoryEffects,
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
-     SingleBlockImplicitTerminator<"scf::YieldOp">]> {
+     SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
   let summary = "Kokkos TeamPolicy parallel for/reduce";
   let description = [{
   }];
@@ -155,6 +155,12 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
 
   let extraClassDeclaration = [{
     unsigned getNumReductions() { return getInitVals().size(); }
+    // leagueSize is already an operand, and it matches the block argument 0.
+    // So getLeagueSize() is not added here.
+    Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
+    Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
+    Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }
+    Value getTeamRank() { return getLoopBody().front().getArguments()[4]; }
   }];
 
   let hasCanonicalizer = 0;

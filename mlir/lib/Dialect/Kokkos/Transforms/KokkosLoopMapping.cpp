@@ -55,43 +55,45 @@ LogicalResult scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp o
 {
   rewriter.setInsertionPoint(op);
   // Create the kokkos.parallel but don't populate the body yet
-  auto newOp = rewriter.create<kokkos::RangeParallelOp>(
+  auto kokkosRange = rewriter.create<kokkos::RangeParallelOp>(
     op.getLoc(), exec, level, op.getUpperBound(), op.getInitVals(), nullptr);
   // Now inline the old loop's operations into the new loop (replacing all usages of the induction variables)
-  rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), newOp.getInductionVars());
-  if(level == kokkos::ParallelLevel::TeamThread) {
-    // Ops in this loop are executed in a TeamThread context.
-    // This means that kokkos.single is required around any ops with side effects,
-    // to make sure that they only happen once per thread as intended.
-    SmallVector<Operation*> opsToWrap;
-    // The following is careful to not mutate a sequence (block's operations) while iterating over it.
-    // Instead, it makes a list of ops to replace upfront and then does all replacements without iterating.
-    for(Operation& op : newOp.getBody()->getOperations()) {
-      // TODO: find a more rigorous way to figure out if an op has non-idempotent side effects
-      if(isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op)) {
-        opsToWrap.push_back(&op);
-      }
-    }
-    for(Operation* op : opsToWrap)
-    {
-      rewriter.setInsertionPoint(op);
+  // Need to omit scf.yield, so can't just use rewriter.inlineBlockBefore
+  rewriter.setInsertionPointToStart(&kokkosRange.getLoopBody().front());
+  IRMapping irMap;
+  for(Operation& oldOp : op.getBody()->getOperations()) {
+    if(isa<scf::YieldOp>(oldOp))
+      continue;
+    // If we are inside a TeamThread loop and oldOp has side effects,
+    // then we have to wrap the new op in a PerThread kokkos.single
+    if(level == kokkos::ParallelLevel::TeamThread &&
+        (isa<memref::StoreOp>(oldOp) || isa<memref::AtomicRMWOp>(oldOp))) {
       // The single has the same set of result types as the original op
-      auto single = rewriter.create<kokkos::SingleOp>(op->getLoc(), op->getResultTypes(), kokkos::SingleLevel::PerThread);
+      auto single = rewriter.create<kokkos::SingleOp>(oldOp.getLoc(), oldOp.getResultTypes(), kokkos::SingleLevel::PerThread);
       auto singleBody = rewriter.createBlock(&single.getRegion());
+      auto ip = rewriter.saveInsertionPoint();
       rewriter.setInsertionPointToStart(singleBody);
-      rewriter.clone(*op);
-      rewriter.create<scf::YieldOp>(op->getLoc(), op->getResults());
-      rewriter.replaceOp(op, single);
+      auto singleWrappedOp = rewriter.clone(oldOp, irMap);
+      rewriter.create<kokkos::YieldOp>(op->getLoc(), singleWrappedOp->getResults());
+      for (auto p : llvm::zip(oldOp.getResults(), single->getResults())) {
+        irMap.map(std::get<0>(p), std::get<1>(p));
+      }
+      rewriter.restoreInsertionPoint(ip);
+    }
+    else {
+      auto newOp = rewriter.clone(oldOp, irMap);
+      for (auto p : llvm::zip(oldOp.getResults(), newOp->getResults())) {
+        irMap.map(std::get<0>(p), std::get<1>(p));
+      }
     }
   }
   // The new loop is fully constructed.
   // As a last step, erase the old loop and replace uses of its results with those of the new loop.
-  rewriter.replaceOp(op, newOp);
+  rewriter.replaceOp(op, kokkosRange);
   return success();
 }
 
-/*
-// Convert an scf.parallel to a TeamPolicy parallel_for, with a 1-dimensional 
+// Convert an scf.parallel to a TeamPolicy parallel_for, with a 1-dimensional iteration space (1 team = 1 iteration)
 LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, Value leagueSize, Value teamSizeHint, Value vectorLengthHint)
 {
   rewriter.setInsertionPoint(op);
@@ -100,7 +102,7 @@ LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op
     op.getLoc(), leagueSize, teamSizeHint, vectorLengthHint, op.getInitVals(), nullptr);
   // Now inline the old loop's operations into the new loop.
   // The team's block arguments are 
-  rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), ValueRange(newOp.getInductionVars());
+  rewriter.inlineBlockBefore(op.getBody(), newOp.getBody(), newOp.getBody()->end(), ValueRange(newOp.getLeagueRank()));
   // Ops in this loop are executed in a Team context.
   // This means that kokkos.single is required around any ops with side effects,
   // to make sure that they only happen once per team as intended.
@@ -129,7 +131,6 @@ LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op
   rewriter.replaceOp(op, newOp);
   return success();
 }
-*/
 
 LogicalResult scfParallelToSequential(RewriterBase& rewriter, scf::ParallelOp op)
 {
@@ -140,23 +141,39 @@ LogicalResult scfParallelToSequential(RewriterBase& rewriter, scf::ParallelOp op
     [&](OpBuilder& builder, Location loc, ValueRange inductionVars, ValueRange args) -> ValueVector
     {
       ValueVector results;
-      // Just clone the statements of op's body.
-      // When the scf.reduce is encountered, if any:
-      // - for each of its n regions, promote all normal ops into the loop body
-      // - reduce has n operands, one per reduction. These are partial reductions to update.
-      // - each region i has 1 block, whose 2 args are the partial reductions to join
-      //   - LHS = implicit partial reduction
-      //   - RHS = ith reduce operand (some value computed in the body)
-      // - Replace LHS with the ith loop argument
-      // - just delete all scf.reduce.return inside reduce blocks. Instead append the joined result to results.
       IRMapping irMap;
       for (auto p : llvm::zip(op.getInductionVars(), inductionVars)) {
         irMap.map(std::get<0>(p), std::get<1>(p));
       }
       for(Operation& oldOp : op.getBody()->getOperations()) {
         if(auto reduce = dyn_cast<scf::ReduceOp>(oldOp)) {
+          //TODO: when LLVM is updated, this should be modified to support arbitrary number of reductions
+          //The basic structure is the same, but now the reduce can have N operands and N regions, each doing
+          //a join
+          Value valToJoin = irMap.lookupOrDefault(reduce.getOperand());
+          Value partialReduction = args[0];
+          for(Region& reduceRegion : reduce->getRegions()) {
+            Block& reduceBlock = reduceRegion.front();
+            irMap.map(reduceBlock.getArguments()[0], partialReduction);
+            irMap.map(reduceBlock.getArguments()[1], valToJoin);
+            for(Operation& oldReduceOp : reduceBlock.getOperations()) {
+              if(auto reduceReturn = dyn_cast<scf::ReduceReturnOp>(oldReduceOp)) {
+                // reduceReturn's operand is the updated partial reduction.
+                // Yield this back to the loop (final result or passed to next iteration)
+                results.push_back(reduceReturn.getOperand());
+              }
+              else {
+                // All other ops: just inline into new loop body
+                auto newOp = builder.clone(oldReduceOp, irMap);
+                for (auto p : llvm::zip(oldReduceOp.getResults(), newOp->getResults())) {
+                  irMap.map(std::get<0>(p), std::get<1>(p));
+                }
+              }
+            }
+          }
         }
         else {
+          // For all ops besides reduce, just inline into the new loop
           auto newOp = builder.clone(oldOp, irMap);
           for (auto p : llvm::zip(oldOp.getResults(), newOp->getResults())) {
             irMap.map(std::get<0>(p), std::get<1>(p));
