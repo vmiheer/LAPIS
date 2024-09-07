@@ -3,7 +3,8 @@
    generate-gold-compare.py <pass flags> <input MLIR>
    For example:
    ./generate-gold-compare.py --parallel-unit-step Dialect/Kokkos/par_unit_step_0.mlir
+3. Check that the generated gold file is correct.
 
-Step 2 can be repeated if the pass's behavior changes, or if the
+Steps 2-3 can be repeated if the pass's behavior changes, or if the
 pass flags for a test need to change.
 

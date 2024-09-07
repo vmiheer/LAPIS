@@ -49,6 +49,13 @@ int getParallelNumLevels(scf::ParallelOp op)
   return depth;
 }
 
+// Return true iff op has side effects that should happen exactly once.
+// This means it should be wrapped in a kokkos.single
+bool opNeedsSingle(const Operation& op)
+{
+  return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op);
+}
+
 // Rewrite the given scf.parallel as a kokkos.parallel, with the given execution space and nesting level
 // (not for TeamPolicy loops)
 LogicalResult scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp op, kokkos::ExecutionSpace exec, kokkos::ParallelLevel level)
@@ -66,8 +73,7 @@ LogicalResult scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp o
       continue;
     // If we are inside a TeamThread loop and oldOp has side effects,
     // then we have to wrap the new op in a PerThread kokkos.single
-    if(level == kokkos::ParallelLevel::TeamThread &&
-        (isa<memref::StoreOp>(oldOp) || isa<memref::AtomicRMWOp>(oldOp))) {
+    if(level == kokkos::ParallelLevel::TeamThread && opNeedsSingle(oldOp)) {
       // The single has the same set of result types as the original op
       auto single = rewriter.create<kokkos::SingleOp>(oldOp.getLoc(), oldOp.getResultTypes(), kokkos::SingleLevel::PerThread);
       auto singleBody = rewriter.createBlock(&single.getRegion());
@@ -111,9 +117,8 @@ LogicalResult scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op
   // Instead, it makes a list of ops to replace upfront and then does all the replacements without iterating.
   for(Operation& op : newOp.getBody()->getOperations()) {
     // TODO: find a more rigorous way to figure out if an op has side effects that we care about
-    if(isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op)) {
+    if(opNeedsSingle(op))
       opsToWrap.push_back(&op);
-    }
   }
   for(Operation* op : opsToWrap)
   {
@@ -240,7 +245,8 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     }
     else if(nestingLevel == 2)
     {
-      //TODO
+      // First, map the top-level parallel to a TeamPolicy
+      if(failed(scfParallelToTeam(rewriter, op, Value leagueSize, Value teamSizeHint, Value vectorLengthHint)
     }
     else if(nestingLevel >= 3)
     {
