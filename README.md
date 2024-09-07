@@ -127,4 +127,4 @@ TODO: for when torch-mlir support is restored
 
 ## Developer Guide
 ### Adding tests
-see [AddingNewTests.txt](mlir/tests/AddingNewTests.txt).
+see [AddingNewTests.txt](mlir/test/AddingNewTests.txt).
