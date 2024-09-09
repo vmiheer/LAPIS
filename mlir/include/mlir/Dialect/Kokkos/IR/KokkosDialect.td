@@ -169,11 +169,20 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
      RecursiveMemoryEffects,
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
      SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
-  let summary = "Kokkos TeamPolicy parallel for/reduce";
+  let summary = "Kokkos 2-level parallel for/reduce";
   let description = [{
+    A `kokkos.thread_parallel` op represents a 2-level nested parallel loop.
+    Each outer level iteration is mapped to a Kokkos thread using a combination of `TeamPolicy` and `TeamThreadRange`.
+    Each inner level iteration is mapped to a vector lane within the thread using `ThreadVectorRange`.
+    The team size and distribution of outer iterations to teams is handled automatically by the
+    Kokkos emitter and at runtime.
+    Because the outer iterations must be independent and Kokkos ThreadVector loops have
+    implicit synchronization, `kokkos.barrier` is never used inside this op. However,
+    per-thread `kokkos.single` can be used to ensure op(s) with side effects happen exactly once
+    per outer iteration.
   }];
 
-  let arguments = (ins Index:$numThreads,
+  let arguments = (ins Index:$numIters,
                        Index:$vectorLengthHint,
                        Variadic<AnyType>:$initVals);
   let results = (outs Variadic<AnyType>:$results);
@@ -181,29 +190,21 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
 
   let skipDefaultBuilders = 1;
 
-  // ValueRange (body block arguments) should contain exactly 5 values:
-  // league size, team size, vector length, league rank, team rank
-
   // Note that because we don't know the backend/architecture ahead of time,
   // the team size and vector length passed into the body
   // will be computed at runtime based on 
   let builders = [
-    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
-      "ValueRange":$initVals,
+    OpBuilder<(ins "Value":$numIters, "Value":$vectorLengthHint, "ValueRange":$initVals,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
+    OpBuilder<(ins "Value":$numIters, "Value":$teamSizeHint, "Value":$vectorLengthHint,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
   ];
 
   let extraClassDeclaration = [{
     unsigned getNumReductions() { return getInitVals().size(); }
-    // leagueSize is an operand, so getLeagueSize() already exists.
-    Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
-    Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
-    Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }
-    Value getTeamRank() { return getLoopBody().front().getArguments()[4]; }
+    Value getRank() { return getLoopBody().front().getArguments()[0]; }
   }];
 
   let hasCanonicalizer = 0;
@@ -277,9 +278,9 @@ def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"kokkos::Yield
 }
 
 def ReduceOp : Kokkos_Op<"reduce",
-[ParentOneOf<["RangeParallelOp", "TeamParallelOp"]>]>
+[ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp"]>]>
 {
-  let summary = "reduce operation for parallel for";
+  let summary = "Parallel reduction";
   let description = [{
     The result of the reduce operation's body must have the same type as the
     operands and associated result value of the parallel loop operation.
@@ -309,8 +310,8 @@ def ReduceOp : Kokkos_Op<"reduce",
 }
 
 def YieldOp : Kokkos_Op<"yield", [Pure, ReturnLike, Terminator,
-    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "SingleOp", "ReduceOp"]>]> {
-  let summary = "termination operation";
+    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp", "ReduceOp"]>]> {
+  let summary = "Region terminator";
   let description = [{ 
     "kokkos.yield" terminates the region of a parallel, single or reduction op.
     If enclosed in a parallel op, it should have zero operands.
