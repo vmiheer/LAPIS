@@ -74,7 +74,6 @@ def Kokkos_SingleLevel : I64EnumAttr<
 class Kokkos_Op<string mnemonic, list<Trait> traits = []>
     : Op<Kokkos_Dialect, mnemonic, traits>;
 
-
 def RangeParallelOp : Kokkos_Op<"range_parallel",
     [AutomaticAllocationScope,
      AttrSizedOperandSegments,
@@ -124,8 +123,6 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
      SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
   let summary = "Kokkos TeamPolicy parallel for/reduce";
-  let description = [{
-  }];
 
   let arguments = (ins Index:$leagueSize,
                        Index:$teamSizeHint,
@@ -141,8 +138,7 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
 
   // Note that because we don't know the backend/architecture ahead of time,
   // the team size and vector length passed into the body
-  // will be computed at runtime based on TeamPolicy::team_size_
-  // match the TeamParallel's input values
+  // will be computed at runtime based on 
   let builders = [
     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
       "ValueRange":$initVals,
@@ -155,8 +151,55 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
 
   let extraClassDeclaration = [{
     unsigned getNumReductions() { return getInitVals().size(); }
-    // leagueSize is already an operand, and it matches the block argument 0.
-    // So getLeagueSize() is not added here.
+    // leagueSize is an operand, so getLeagueSize() already exists.
+    Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
+    Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
+    Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }
+    Value getTeamRank() { return getLoopBody().front().getArguments()[4]; }
+  }];
+
+  let hasCanonicalizer = 0;
+  let hasCustomAssemblyFormat = 0;
+  let hasVerifier = 0;
+}
+
+def ThreadParallelOp : Kokkos_Op<"thread_parallel",
+    [AutomaticAllocationScope,
+     DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+     RecursiveMemoryEffects,
+     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+     SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
+  let summary = "Kokkos TeamPolicy parallel for/reduce";
+  let description = [{
+  }];
+
+  let arguments = (ins Index:$numThreads,
+                       Index:$vectorLengthHint,
+                       Variadic<AnyType>:$initVals);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+
+  // ValueRange (body block arguments) should contain exactly 5 values:
+  // league size, team size, vector length, league rank, team rank
+
+  // Note that because we don't know the backend/architecture ahead of time,
+  // the team size and vector length passed into the body
+  // will be computed at runtime based on 
+  let builders = [
+    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
+      "ValueRange":$initVals,
+      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
+           "nullptr">:$bodyBuilderFn)>,
+    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
+      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
+           "nullptr">:$bodyBuilderFn)>,
+  ];
+
+  let extraClassDeclaration = [{
+    unsigned getNumReductions() { return getInitVals().size(); }
+    // leagueSize is an operand, so getLeagueSize() already exists.
     Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
     Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
     Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }

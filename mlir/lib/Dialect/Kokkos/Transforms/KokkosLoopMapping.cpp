@@ -195,7 +195,7 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
   using OpRewritePattern<scf::ParallelOp>::OpRewritePattern;
 
   KokkosLoopRewriter(MLIRContext *context)
-      : OpRewritePattern(context) {}
+    : OpRewritePattern(context) {}
 
   LogicalResult matchAndRewrite(scf::ParallelOp op, PatternRewriter &rewriter) const override {
     // Only match with top-level ParallelOps (meaning op is not enclosed in another ParallelOp)
@@ -239,22 +239,23 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     //             Serialize all other loops by replacing them with scf.for.
     //
     // For exec == Host, just parallelize the outermost loop with RangePolicy and serialize the inner loops.
-    if(nestingLevel == 1)
+    if(exec == kokkos::ExecutionSpace::Host || nestingLevel == 1)
     {
       return scfParallelToKokkosRange(rewriter, op, exec, kokkos::ParallelLevel::RangePolicy);
     }
     else if(nestingLevel == 2)
     {
-      // First, map the top-level parallel to a TeamPolicy
-      if(failed(scfParallelToTeam(rewriter, op, Value leagueSize, Value teamSizeHint, Value vectorLengthHint)
+      // Map the outer parallel to teams in a league,
+      // and the inner parallel to threads within teams
+      // Note: zero for team size hint, vector length hint 
+      Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+      return scfParallelToTeam(rewriter, op, leagueSize, Value teamSizeHint, Value vectorLengthHint)
     }
     else if(nestingLevel >= 3)
     {
-      //TODO
     }
     if(nestingLevel > 3)
     {
-      //TODO
     }
     return success();
   }
