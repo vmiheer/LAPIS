@@ -225,7 +225,6 @@ LogicalResult RangeParallelOp::verify() {
 // ****************** //
 //   TeamParallelOp   //
 // ****************** //
-//
 
 void TeamParallelOp::build(
     OpBuilder &builder, OperationState &result,
@@ -388,6 +387,47 @@ LogicalResult TeamParallelOp::verify() {
   return success();
 }
 */
+
+// ******************** //
+//   ThreadParallelOp   //
+// ******************** //
+
+void ThreadParallelOp::build(
+    OpBuilder &builder, OperationState &result,
+    Value numIters, Value vectorLengthHint, ValueRange initVals,
+    function_ref<void(OpBuilder &, Location, ValueRange)>
+        bodyBuilderFn) {
+  result.addTypes(initVals.getTypes());
+
+  OpBuilder::InsertionGuard guard(builder);
+  SmallVector<Type, 8> argTypes(5, builder.getIndexType());
+  SmallVector<Location, 8> argLocs(5, result.location);
+  Region *bodyRegion = result.addRegion();
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
+
+  if (bodyBuilderFn) {
+    builder.setInsertionPointToStart(bodyBlock);
+    bodyBuilderFn(builder, result.location, bodyBlock->getArguments());
+  }
+  ThreadParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
+}
+
+void ThreadParallelOp::build(
+    OpBuilder &builder, OperationState &result,
+    Value numIters, Value vectorLengthHint,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+  build(builder, result, numIters, vectorLengthHint, ValueRange(), bodyBuilderFn);
+}
+
+Region &ThreadParallelOp::getLoopBody() { return getRegion(); }
+
+void ThreadParallelOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
+  // Both the operation itself and the region may be branching into the body or
+  // back into the operation itself. It is possible for loop not to enter the
+  // body.
+  regions.push_back(RegionSuccessor(&getRegion()));
+  regions.push_back(RegionSuccessor());
+}
 
 LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location,

@@ -136,9 +136,9 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   // ValueRange (body block arguments) should contain exactly 5 values:
   // league size, team size, vector length, league rank, team rank
 
-  // Note that because we don't know the backend/architecture ahead of time,
-  // the team size and vector length passed into the body
-  // will be computed at runtime based on 
+  // Because we don't know the hardware architecture ahead of time,
+  // the team size and vector length passed into the body are just hints.
+  // The real team size/vector length have to be computed at runtime.
   let builders = [
     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
       "ValueRange":$initVals,
@@ -190,21 +190,18 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
 
   let skipDefaultBuilders = 1;
 
-  // Note that because we don't know the backend/architecture ahead of time,
-  // the team size and vector length passed into the body
-  // will be computed at runtime based on 
   let builders = [
     OpBuilder<(ins "Value":$numIters, "Value":$vectorLengthHint, "ValueRange":$initVals,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "Value":$numIters, "Value":$teamSizeHint, "Value":$vectorLengthHint,
+    OpBuilder<(ins "Value":$numIters, "Value":$vectorLengthHint,
       CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
            "nullptr">:$bodyBuilderFn)>,
   ];
 
   let extraClassDeclaration = [{
     unsigned getNumReductions() { return getInitVals().size(); }
-    Value getRank() { return getLoopBody().front().getArguments()[0]; }
+    Value getInductionVar() { return getLoopBody().front().getArguments()[0]; }
   }];
 
   let hasCanonicalizer = 0;

@@ -187,10 +187,8 @@ Operation* scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, V
   auto origInductionVars = op.getInductionVars();
   int n = origInductionVars.size();
   Value leagueRank = kokkosTeam.getLeagueRank();
-  SmallVector<Value> newInductionVars(origInductionVars.size());
   if(n == 1)
   {
-    newInductionVars[0] = leagueRank;
     irMap.map(origInductionVars[0], leagueRank);
   }
   else
@@ -198,18 +196,18 @@ Operation* scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, V
     // If the original loop was not 1D, use arith.remui and arith.divui to get
     // the original (n-dimensional) induction variables in terms of the single league rank.
     // Treat the last dimension the fastest varying.
-    Value leagueRankRemaining = leagueRank;
+    Value leagueRankRemaining = leagueSize;
     for(int i = n - 1; i >= 0; i--)
     {
       Value thisLoopSize = origLoopBounds[i];
       // First, use remainder (remui) to get the current induction var
-      newInductionVars[i] = rewriter.create<arith::RemUIOp>(op.getLoc(), leagueRankRemaining, thisLoopSize);
+      Value newInductionVar = rewriter.create<arith::RemUIOp>(op.getLoc(), leagueRankRemaining, thisLoopSize).getResult();
       // Then (if there are more loops after this), divide the remaining league rank by the loop size, rounding down
       if(i != 0) {
-        leagueRankRemaining = rewriter.create<arith::DivUIOp>(op.getLoc(), leagueRankRemaining, thisLoopSize);
+        leagueRankRemaining = rewriter.create<arith::DivUIOp>(op.getLoc(), leagueRankRemaining, thisLoopSize).getResult();
       }
       // Map old to new, for when we generate the new body
-      irMap.map(origInductionVars[i], newInductionVars[i]);
+      irMap.map(origInductionVars[i], newInductionVar);
     }
   }
   for(Operation& oldOp : op.getBody()->getOperations()) {
@@ -253,31 +251,38 @@ Operation* scfParallelToKokkosThread(RewriterBase& rewriter, scf::ParallelOp op,
   // First, compute the league size as the product of iteration bounds of op
   // (this is easy because the bounds are in [0:N:1] form)
   auto origLoopBounds = op.getUpperBound();
-  Value numThreads = buildIndexProduct(op.getLoc(), rewriter, origLoopBounds);
+  Value numIters = buildIndexProduct(op.getLoc(), rewriter, origLoopBounds);
   // Create the kokkos.parallel but don't populate the body yet
   auto kokkosThread = rewriter.create<kokkos::ThreadParallelOp>(
-    op.getLoc(), numThreads, vectorLengthHint, op.getInitVals(), nullptr);
+    op.getLoc(), numIters, vectorLengthHint, op.getInitVals(), nullptr);
   // Now inline the old loop's operations into the new loop.
-  rewriter.setInsertionPointToStart(&kokkosTeam.getLoopBody().front());
+  rewriter.setInsertionPointToStart(&kokkosThread.getLoopBody().front());
   IRMapping irMap;
   auto origInductionVars = op.getInductionVars();
   int n = origInductionVars.size();
-  // Use arith.remui and arith.divui to get the original (n-dimensional) induction variables in terms of the single league rank.
+  // Use arith.remui and arith.divui to get the original (n-dimensional) induction variables in terms of the
+  // single induction variable passed to the new loop body.
   // Treat the last dimension the fastest varying.
-  Value leagueRank = kokkosTeam.getLeagueRank();
-  SmallVector<Value> newInductionVars(origInductionVars.size());
-  Value leagueRankRemaining = leagueRank;
-  for(int i = n - 1; i >= 0; i--)
+  Value inductionVar = kokkosThread.getInductionVar();
+  if(n == 1)
   {
-    Value thisLoopSize = origLoopBounds[i];
-    // First, use remainder (remui) to get the current induction var
-    newInductionVars[i] = rewriter.create<arith::RemUIOp>(op.getLoc(), leagueRankRemaining, thisLoopSize);
-    // Then (if there are more loops after this), divide the remaining league rank by the loop size, rounding down
-    if(i != 0) {
-      leagueRankRemaining = rewriter.create<arith::DivUIOp>(op.getLoc(), leagueRankRemaining, thisLoopSize);
+    irMap.map(origInductionVars[0], inductionVar);
+  }
+  else
+  {
+    Value iterCountRemaining = numIters;
+    for(int i = n - 1; i >= 0; i--)
+    {
+      Value thisLoopSize = origLoopBounds[i];
+      // First, use remainder (remui) to get the current induction var
+      Value newInductionVar = rewriter.create<arith::RemUIOp>(op.getLoc(), iterCountRemaining, thisLoopSize).getResult();
+      // Then (if there are more loops after this), divide the remaining league rank by the loop size, rounding down
+      if(i != 0) {
+        iterCountRemaining = rewriter.create<arith::DivUIOp>(op.getLoc(), iterCountRemaining, thisLoopSize).getResult();
+      }
+      // Map old to new, for when we generate the new body
+      irMap.map(origInductionVars[i], newInductionVar);
     }
-    // Map old to new, for when we generate the new body
-    irMap.map(origInductionVars[i], newInductionVars[i]);
   }
   for(Operation& oldOp : op.getBody()->getOperations()) {
     if(isa<scf::YieldOp>(oldOp))
@@ -306,8 +311,8 @@ Operation* scfParallelToKokkosThread(RewriterBase& rewriter, scf::ParallelOp op,
   }
   // The new loop is fully constructed.
   // As a last step, erase the old loop and replace uses of its results with those of the new loop.
-  rewriter.replaceOp(op, kokkosTeam);
-  return kokkosTeam;
+  rewriter.replaceOp(op, kokkosThread);
+  return kokkosThread;
 }
 
 struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
