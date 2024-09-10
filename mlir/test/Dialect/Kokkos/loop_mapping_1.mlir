@@ -1,9 +1,9 @@
 module {
-  func.func private @kokkos_sparse_kernel_0(%arg0: memref<?xf64>, %arg1: memref<?xindex>, %arg2: memref<?xindex>, %arg3: memref<?xf64>, %arg4: memref<?xf64>) {
-    %c1 = arith.constant 1 : index
+  func.func @kokkos_sparse_kernel_0(%arg0: memref<?xf64>, %arg1: memref<?xindex>, %arg2: memref<?xindex>, %arg3: memref<?xf64>, %arg4: memref<?xf64>) {
     %c0 = arith.constant 0 : index
-    %c5 = arith.constant 5 : index
-    scf.parallel (%arg5) = (%c0) to (%c5) step (%c1) {
+    %c1 = arith.constant 1 : index
+    %cN = memref.dim %arg0, %c0 : index
+    scf.parallel (%arg5) = (%c0) to (%cN) step (%c1) {
       %0 = memref.load %arg0[%arg5] : memref<?xf64>
       %1 = memref.load %arg1[%arg5] : memref<?xindex>
       %2 = arith.addi %arg5, %c1 : index
