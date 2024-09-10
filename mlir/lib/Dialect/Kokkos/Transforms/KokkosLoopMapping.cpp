@@ -91,9 +91,25 @@ Value buildIndexProduct(Location loc, RewriterBase& rewriter, ValRange vals)
 
 // Return true iff op has side effects that should happen exactly once.
 // This means that if it appears in a parallel context, it must be wrapped in a kokkos.single.
-bool opNeedsSingle(const Operation& op)
+//
+// (!) Note: here, rely on a key difference between SCF and general Kokkos code.
+// SCF's nested parallelism acts like a fork-join model, so values scoped outside
+// the innermost parallel level cannot differ across threads.
+//
+// But in Kokkos, values scoped outside the innermost loop are replicated across threads/vector lanes, and
+// those replications can have different values (CUDA model). The Kokkos dialect is capable of representing this case
+// (e.g. team rank is a block argument and other values can be computed based on that), but Kokkos dialect
+// code lowered from SCF (everything handled by this pass) can never do that.
+bool opNeedsSingle(Operation* op)
 {
-  return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op);
+  bool hasSideEffects = false;
+  op->walk([&](memref::StoreOp) {
+      hasSideEffects = true;
+  });
+  op->walk([&](memref::AtomicRMWOp) {
+      hasSideEffects = true;
+  });
+  return hasSideEffects;
 }
 
 Operation* scfParallelToSequential(RewriterBase& rewriter, scf::ParallelOp op)
@@ -169,7 +185,7 @@ Operation* scfParallelToKokkosRange(RewriterBase& rewriter, scf::ParallelOp op, 
       continue;
     // If we are inside a TeamThread loop and oldOp has side effects,
     // then we have to wrap the new op in a PerThread kokkos.single
-    if(level == kokkos::ParallelLevel::TeamThread && opNeedsSingle(oldOp)) {
+    if(level == kokkos::ParallelLevel::TeamThread && opNeedsSingle(&oldOp)) {
       // The single has the same set of result types as the original op
       auto single = rewriter.create<kokkos::SingleOp>(oldOp.getLoc(), oldOp.getResultTypes(), kokkos::SingleLevel::PerThread);
       auto singleBody = rewriter.createBlock(&single.getRegion());
@@ -242,7 +258,7 @@ Operation* scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, V
       continue;
     // If we are inside a TeamThread loop and oldOp has side effects,
     // then we have to wrap the new op in a PerThread kokkos.single
-    if(opNeedsSingle(oldOp)) {
+    if(opNeedsSingle(&oldOp)) {
       // The single has the same set of result types as the original op
       auto single = rewriter.create<kokkos::SingleOp>(oldOp.getLoc(), oldOp.getResultTypes(), kokkos::SingleLevel::PerTeam);
       auto singleBody = rewriter.createBlock(&single.getRegion());
@@ -267,7 +283,7 @@ Operation* scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, V
   return kokkosTeam;
 }
 
-LogicalResult insertTeamSynchronization(RewriterBase& rewriter, scf::TeamParallelOp op)
+LogicalResult insertTeamSynchronization(RewriterBase& rewriter, kokkos::TeamParallelOp op)
 {
   //TODO
   return success();
@@ -321,7 +337,7 @@ Operation* scfParallelToKokkosThread(RewriterBase& rewriter, scf::ParallelOp op,
       continue;
     // If we are inside a TeamThread loop and oldOp has side effects,
     // then we have to wrap the new op in a PerThread kokkos.single
-    if(opNeedsSingle(oldOp)) {
+    if(opNeedsSingle(&oldOp)) {
       // The single has the same set of result types as the original op
       auto single = rewriter.create<kokkos::SingleOp>(oldOp.getLoc(), oldOp.getResultTypes(), kokkos::SingleLevel::PerTeam);
       auto singleBody = rewriter.createBlock(&single.getRegion());
@@ -366,6 +382,7 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     // This is conservative as there are obviously functions that work safely on the device,
     // but an inlining pass could work around that easily
     bool canBeOffloaded = true;
+    // TODO: is there a more efficient way to check for multiple types of Op in a walk?
     op->walk([&](func::CallOp) {
         canBeOffloaded = false;
     });
@@ -399,8 +416,8 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
       if(!newOp) return op.emitError("Failed to convert scf.parallel to kokkos.range_parallel (RangePolicy)");
       // NOTE: when walking a tree and replacing ops as they're found, the walk must be PostOrder
       newOp->walk<WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
-          if(!scfParallelToSequential(rewriter, innerParOp))
-            return innerParOp.emitError("Failed to convert scf.parallel to scf.for");
+          scfParallelToSequential(rewriter, innerParOp);
+          return WalkResult::skip();
       });
     }
     else if(nestingLevel == 2)
@@ -411,9 +428,9 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
       if(!newOp) return op.emitError("Failed to convert scf.parallel to kokkos.thread_parallel");
       // since the nesting level is 2, we know all inner parallel loops should be at ThreadVector level.
       // There won't be any more scf.parallels nested within those.
-      newOp->walk<WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
-          if(!scfParallelToKokkosRange(rewriter, innerParOp, exec, kokkos::ParallelLevel::ThreadVector))
-            return innerParOp.emitError("Failed to convert scf.parallel to kokkos.range_parallel (ThreadVector)");
+      newOp->walk<mlir::WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
+          scfParallelToKokkosRange(rewriter, innerParOp, exec, kokkos::ParallelLevel::ThreadVector);
+          return WalkResult::skip();
       });
     }
     else if(nestingLevel >= 3)
@@ -434,7 +451,7 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
       Operation* newOp = scfParallelToKokkosTeam(rewriter, op, zero, zero);
       if(!newOp) return op.emitError("Failed to convert scf.parallel to kokkos.team_parallel");
       // Now that all loops have been mapped to Kokkos levels, insert 
-      if(failed(insertTeamSynchronization(RewriterBase& rewriter, scf::TeamParallelOp op)))
+      if(failed(insertTeamSynchronization(rewriter, cast<kokkos::TeamParallelOp>(newOp))))
         return newOp->emitError("Failed to insert team synchronization into body of kokkos.team_parallel");
     }
     return success();
