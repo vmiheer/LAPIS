@@ -273,7 +273,7 @@ def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"kokkos::Yield
 }
 
 def ReduceOp : Kokkos_Op<"reduce",
-[ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp"]>]>
+[ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp"]>]>
 {
   let summary = "Parallel reduction";
   let description = [{
