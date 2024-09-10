@@ -26,7 +26,7 @@ namespace {
 int getOpParallelDepth(Operation* op)
 {
   int depth = 0;
-  if(isa<scf::ParallelOp>(op) || isa<kokkos::RangeParallelOp>(op) || isa<kokkos::TeamParallelOp>(op))
+  if(isa<scf::ParallelOp>(op) || isa<kokkos::RangeParallelOp>(op) || isa<kokkos::TeamParallelOp>(op) || isa<kokkos::ThreadParallelOp>(op))
     depth++;
   Operation* parent = op->getParentOp();
   if(parent)
@@ -49,6 +49,33 @@ int getParallelNumLevels(scf::ParallelOp op)
   return depth;
 }
 
+// Within the context of a kokkos.team_parallel: does op imply team-wide synchronization?
+// If false, then a kokkos.team_barrier may be required to make the
+// side effects/result(s) of op visible to other threads.
+//
+// - team_barrier syncs
+// - a TeamThread or TeamVector parallel reduce syncs, since these
+//   behave like all-reduces
+// - a per-team Kokkos::single with at least one result is a broadcast, so it syncs
+//
+// - a TeamVector or TeamThread parallel for (no reductions) is async
+// - a Kokkos::single with no results is async
+// - all other ops have no synchronization behavior and are considered async 
+bool doesTeamLevelSync(Operation* op)
+{
+  if(auto rangePar = dyn_cast<kokkos::RangeParallelOp>(op)) {
+    auto level = rangePar.getParallelLevel();
+    return level == kokkos::ParallelLevel::TeamThread ||
+      level == kokkos::ParallelLevel::TeamVector;
+  }
+  else if(auto single = dyn_cast<kokkos::SingleOp>(op)) {
+    return single.getNumResults() && single.getLevel() == kokkos::SingleLevel::PerTeam;
+  }
+  else if(isa<kokkos::TeamBarrierOp>(op))
+    return true;
+  return false;
+}
+
 // Compute the product of some Index-typed values.
 // This assumes no overflow.
 template<typename ValRange>
@@ -63,7 +90,7 @@ Value buildIndexProduct(Location loc, RewriterBase& rewriter, ValRange vals)
 }
 
 // Return true iff op has side effects that should happen exactly once.
-// This means it should be wrapped in a kokkos.single
+// This means that if it appears in a parallel context, it must be wrapped in a kokkos.single.
 bool opNeedsSingle(const Operation& op)
 {
   return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op);
@@ -235,10 +262,15 @@ Operation* scfParallelToKokkosTeam(RewriterBase& rewriter, scf::ParallelOp op, V
       }
     }
   }
-  // The new loop is fully constructed.
-  // As a last step, erase the old loop and replace uses of its results with those of the new loop.
+  // The new loop is fully constructed. Erase the old loop and replace uses of its results with those of the new loop.
   rewriter.replaceOp(op, kokkosTeam);
   return kokkosTeam;
+}
+
+LogicalResult insertTeamSynchronization(RewriterBase& rewriter, scf::TeamParallelOp op)
+{
+  //TODO
+  return success();
 }
 
 // Convert an scf.parallel to a kokkos.thread_parallel.
@@ -364,10 +396,11 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     if(exec == kokkos::ExecutionSpace::Host || nestingLevel == 1)
     {
       Operation* newOp = scfParallelToKokkosRange(rewriter, op, exec, kokkos::ParallelLevel::RangePolicy);
-      if(!newOp) return op.emitOpError("Failed to convert scf.parallel to kokkos.range_parallel");
+      if(!newOp) return op.emitError("Failed to convert scf.parallel to kokkos.range_parallel (RangePolicy)");
       // NOTE: when walking a tree and replacing ops as they're found, the walk must be PostOrder
       newOp->walk<WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
-          scfParallelToSequential(rewriter, innerParOp);
+          if(!scfParallelToSequential(rewriter, innerParOp))
+            return innerParOp.emitError("Failed to convert scf.parallel to scf.for");
       });
     }
     else if(nestingLevel == 2)
@@ -375,22 +408,34 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
       // Note: zero for vector length hint mean that no hint is given, and Kokkos::AUTO should be used instead
       Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
       Operation* newOp = scfParallelToKokkosThread(rewriter, op, zero);
-      if(!newOp) return op.emitOpError("Failed to convert scf.parallel to kokkos.thread_parallel");
+      if(!newOp) return op.emitError("Failed to convert scf.parallel to kokkos.thread_parallel");
+      // since the nesting level is 2, we know all inner parallel loops should be at ThreadVector level.
+      // There won't be any more scf.parallels nested within those.
+      newOp->walk<WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
+          if(!scfParallelToKokkosRange(rewriter, innerParOp, exec, kokkos::ParallelLevel::ThreadVector))
+            return innerParOp.emitError("Failed to convert scf.parallel to kokkos.range_parallel (ThreadVector)");
+      });
     }
     else if(nestingLevel >= 3)
     {
-      // Map parallel levels 1..N like this:
-      // 1: TeamPolicy (1 team per iteration)
-      // 2: TeamThread (1 thread per iteration)
-      // 3..N-1: Sequential
-      // N: ThreadVector (1 vector lane per iteration)
+      // Generate a team policy for the top level. This leaves 2 more levels of parallelism to use.
+      // The mapping for each directly nested loop depends on its depth:
+      //
+      // Nesting level = 1:
+      //   1: TeamVector
+      //
+      // Nesting level N >= 2:
+      //   1: TeamThread
+      //   2...N-1: Sequential
+      //   N: ThreadVector
       //
       // Note: zero for team size hint and vector length hint mean that no hint is given, and Kokkos::AUTO should be used instead
       Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
-      // 
-      // To find the league size, 
       Operation* newOp = scfParallelToKokkosTeam(rewriter, op, zero, zero);
-      if(!newOp) return op.emitOpError("Failed to convert scf.parallel to kokkos.team_parallel");
+      if(!newOp) return op.emitError("Failed to convert scf.parallel to kokkos.team_parallel");
+      // Now that all loops have been mapped to Kokkos levels, insert 
+      if(failed(insertTeamSynchronization(RewriterBase& rewriter, scf::TeamParallelOp op)))
+        return newOp->emitError("Failed to insert team synchronization into body of kokkos.team_parallel");
     }
     return success();
   }

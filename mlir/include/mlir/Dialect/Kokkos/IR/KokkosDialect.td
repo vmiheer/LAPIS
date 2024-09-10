@@ -177,7 +177,7 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
     The team size and distribution of outer iterations to teams is handled automatically by the
     Kokkos emitter and at runtime.
     Because the outer iterations must be independent and Kokkos ThreadVector loops have
-    implicit synchronization, `kokkos.barrier` is never used inside this op. However,
+    implicit synchronization, `kokkos.team_barrier` is never used inside this op. However,
     per-thread `kokkos.single` can be used to ensure op(s) with side effects happen exactly once
     per outer iteration.
   }];
@@ -209,18 +209,16 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
   let hasVerifier = 0;
 }
 
-def TeamBarrierOp : Kokkos_Op<"barrier", [HasParent<"TeamParallelOp">]> {
+def TeamBarrierOp : Kokkos_Op<"team_barrier", [HasParent<"TeamParallelOp">]> {
   let summary = "Synchronize all threads in a team. In C++, t.team_barrier()";
   let description = [{
     Kokkos team barrier, to be called within a TeamPolicy context. All threads in
     the team must reach the barrier together to avoid deadlock, but this is enforced by the
     fact that TeamParallelOp must be the parent.
     ```
-    kokkos.barrier
+    kokkos.team_barrier
     ```
   }];
-
-  let assemblyFormat = "attr-dict";
 }
 
 def SyncOp : Kokkos_Op<"sync"> {
