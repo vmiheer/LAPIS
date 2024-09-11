@@ -439,6 +439,20 @@ LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
   return success();
 }
 
+void ReduceOp::build(
+    OpBuilder &builder, OperationState &result, Value operand,
+    function_ref<void(OpBuilder &, Location, Value, Value)> bodyBuilderFn) {
+  auto type = operand.getType();
+  result.addOperands(operand);
+
+  OpBuilder::InsertionGuard guard(builder);
+  Region *bodyRegion = result.addRegion();
+  Block *body = builder.createBlock(bodyRegion, {}, ArrayRef<Type>{type, type},
+                                    {result.location, result.location});
+  if (bodyBuilderFn)
+    bodyBuilderFn(builder, result.location, body->getArgument(0),
+                  body->getArgument(1));
+}
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Kokkos/IR/Kokkos.cpp.inc"

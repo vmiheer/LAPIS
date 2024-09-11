@@ -40,13 +40,15 @@ int getOpParallelDepth(Operation *op) {
 // - The op itself counts as 1
 // - Each additional nesting level counts as another
 int getParallelNumLevels(scf::ParallelOp op) {
+  // selfDepth will be the nesting depth of op itself
+  // (if it has no scf.parallel parents, this is 0)
   int selfDepth = 0;
-  int maxDepth = 0;
+  int maxDepth = 1;
   // note: walk starting from op visits op itself
   op->walk([&](scf::ParallelOp child) {
     int d = getOpParallelDepth(child);
     if (op == child) {
-      selfDepth = d;
+      selfDepth = d - 1;
     } else {
       if (d > maxDepth)
         maxDepth = d;
@@ -149,23 +151,16 @@ scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
                   // reduceReturn's operand is the updated partial reduction.
                   // Yield this back to the loop (final result or passed to next
                   // iteration)
-                  results.push_back(reduceReturn.getOperand());
+                  results.push_back(irMap.lookupOrDefault(reduceReturn.getOperand()));
                 } else {
                   // All other ops: just inline into new loop body
-                  auto newOp = builder.clone(oldReduceOrMap);
-                  for (auto p : llvm::zip(oldReduceOp.getResults(),
-                                          newOp->getResults())) {
-                    irMap.map(std::get<0>(p), std::get<1>(p));
-                  }
+                  builder.clone(oldReduceOp, irMap);
                 }
               }
             }
           } else {
             // For all ops besides reduce, just inline into the new loop
-            auto newOp = builder.clone(oldOp, irMap);
-            for (auto p : llvm::zip(oldOp.getResults(), newOp->getResults())) {
-              irMap.map(std::get<0>(p), std::get<1>(p));
-            }
+            builder.clone(oldOp, irMap);
           }
         }
         return results;
@@ -185,13 +180,19 @@ void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap) {
   if(isa<scf::YieldOp>(op))
     return;
   else if(scf::ReduceOp reduce = dyn_cast<scf::ReduceOp>(op)) {
-    kokkos::ReduceOp newReduce = rewriter.create<kokkos::ReduceOp>(reduce->getLoc(), reduce.getOperand());
+    kokkos::ReduceOp newReduce = rewriter.create<kokkos::ReduceOp>(reduce->getLoc(), irMap.lookupOrDefault(reduce.getOperand()));
+    // Map (old to new) the two reduce block arguments
+    Block& oldReduceBlock = reduce.getReductionOperator().front();
+    Block& newReduceBlock = newReduce.getReductionOperator().front();
+    for (auto p : llvm::zip(oldReduceBlock.getArguments(), newReduceBlock.getArguments())) {
+      irMap.map(std::get<0>(p), std::get<1>(p));
+    }
     auto ip = rewriter.saveInsertionPoint();
     rewriter.setInsertionPointToStart(&newReduce.getReductionOperator().front());
-    for (Operation &oldOp : reduce.getReductionOperator().front()->getOperations()) {
+    for (Operation &oldOp : oldReduceBlock.getOperations()) {
       if(scf::ReduceReturnOp reduceReturn = dyn_cast<scf::ReduceReturnOp>(oldOp)) {
         // this is not a result of reduce return; the operand of reduceReturn is actually named "result"
-        rewriter.create<kokkos::YieldOp>(reduceReturn.getLoc(), reduceReturn.getResult());
+        rewriter.create<kokkos::YieldOp>(reduceReturn.getLoc(), irMap.lookupOrDefault(reduceReturn.getOperand()));
       }
       else {
         rewriter.clone(oldOp, irMap);
@@ -200,7 +201,7 @@ void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap) {
     rewriter.restoreInsertionPoint(ip);
   }
   else {
-    rewriter.clone(op, irMap);
+    rewriter.clone(*op, irMap);
   }
 }
 
@@ -232,30 +233,6 @@ kokkos::RangeParallelOp scfParallelToKokkosRange(RewriterBase &rewriter,
   rewriter.replaceOp(op, kokkosRange);
   return kokkosRange;
 }
-
-/*
-    if (level == kokkos::ParallelLevel::TeamThread && opNeedsSingle(&oldOp)) {
-      // The single has the same set of result types as the original op
-      auto single = rewriter.create<kokkos::SingleOp>(
-          oldOp.getLoc(), oldOp.getResultTypes(),
-          kokkos::SingleLevel::PerThread);
-      auto singleBody = rewriter.createBlock(&single.getRegion());
-      auto ip = rewriter.saveInsertionPoint();
-      rewriter.setInsertionPointToStart(singleBody);
-      auto singleWrappedOp = rewriter.clone(oldOp, irMap);
-      rewriter.create<kokkos::YieldOp>(op->getLoc(),
-                                       singleWrappedOp->getResults());
-      for (auto p : llvm::zip(oldOp.getResults(), single->getResults())) {
-        irMap.map(std::get<0>(p), std::get<1>(p));
-      }
-      rewriter.restoreInsertionPoint(ip);
-    } else {
-      
-      for (auto p : llvm::zip(oldOp.getResults(), newOp->getResults())) {
-        irMap.map(std::get<0>(p), std::get<1>(p));
-      }
-    }
-*/
 
 // Convert an scf.parallel to a TeamPolicy parallel_for.
 // The outer loop always uses a 1D iteration space where 1 team == 1 iteration.
@@ -316,72 +293,6 @@ kokkos::TeamParallelOp scfParallelToKokkosTeam(RewriterBase &rewriter,
   return kokkosTeam;
 }
 
-// ** Helpers to determine the parallel context of ops inside parallel loops **
-// is op inside a team parallel (kokkos.TeamParallelOp)?
-bool inTeamLoop(Operation* op)
-{
-  return op->getParentOfType<kokkos::TeamParallelOp>();
-}
-
-// is op inside a thread parallel loop? (TeamThreadRange)
-bool inThreadLoop(Operation* op)
-{
-  Operation* iter = op->getParentOfType<kokkos;
-  while(iter) {
-
-  }
-}
-
-// is op inside a vector parallel context? (ThreadVectorRange or TeamVectorRange)
-bool inVectorLoop(Operation* op)
-{
-}
-
-// Within the given loop, wrap individual ops inside kokkos.single as needed.
-void insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
-  loop->walk([&](Operation* op)
-  {
-    if(opNeedsSingle(op)) {
-      if(inTeamParallelContext(op) && !inThreadParallelContext(op)) {
-        // op needs to be in PerTeam single
-      }
-      else if(inThreadParallelContext(op) && !inVectorParallelContext(op)) {
-        // op needs to be in PerThread single
-      }
-    }
-  });
-}
-
-// !! TODO: team synchronization requires dataflow analysis within op's body
-// to understand what specific memrefs might be in use at each point
-// (reading or writing) by other threads executing a team-level loop or single.
-//
-// So for now, conservatively insert a barrier after each team-wide parallel op
-// and single that does not already synchronize. This is obviously not ideal for
-// performance of complex kernels, but most of our common examples (spmv-like
-// patterns, fused batched gemv/axpy) are not affected.
-void insertTeamSynchronization(RewriterBase &rewriter,
-                                        kokkos::TeamParallelOp op) {
-  op->walk([&](kokkos::RangeParallelOp nestedOp) {
-    auto level = nestedOp.getParallelLevel();
-    bool needsPostBarrier = (nestedOp.getNumResults() == 0) &&
-                            (level == kokkos::ParallelLevel::TeamThread ||
-                             level == kokkos::ParallelLevel::TeamVector);
-    if (needsPostBarrier) {
-      rewriter.setInsertionPointAfter(nestedOp);
-      rewriter.create<kokkos::TeamBarrierOp>(nestedOp.getLoc());
-    }
-  });
-  op->walk([&](kokkos::SingleOp single) {
-    bool needsPostBarrier = single.getNumResults() == 0 &&
-                            single.getLevel() == kokkos::SingleLevel::PerTeam;
-    if (needsPostBarrier) {
-      rewriter.setInsertionPointAfter(single);
-      rewriter.create<kokkos::TeamBarrierOp>(single.getLoc());
-    }
-  });
-}
-
 // Convert an scf.parallel to a kokkos.thread_parallel.
 // This represents a common pattern where the top two levels of a TeamPolicy
 // (TeamPolicy and TeamThread) are used together to iterate over one flat range.
@@ -439,6 +350,104 @@ Operation *scfParallelToKokkosThread(RewriterBase &rewriter, scf::ParallelOp op,
   // those of the new loop.
   rewriter.replaceOp(op, kokkosThread);
   return kokkosThread;
+}
+
+// ** Helpers to determine the parallel context of ops inside parallel loops **
+// is op inside a team parallel (kokkos.TeamParallelOp)?
+bool inTeamLoop(Operation* op)
+{
+  return op->getParentOfType<kokkos::TeamParallelOp>();
+}
+
+// is op inside a thread parallel loop? (TeamThreadRange)
+bool inThreadLoop(Operation* op)
+{
+  kokkos::RangeParallelOp iter = op->getParentOfType<kokkos::RangeParallelOp>();
+  while(iter) {
+    if(iter.getParallelLevel() == kokkos::ParallelLevel::TeamThread)
+      return true;
+    iter = iter->getParentOfType<kokkos::RangeParallelOp>();
+  }
+  return false;
+}
+
+// is op inside a vector parallel context? (ThreadVectorRange or TeamVectorRange)
+bool inVectorLoop(Operation* op)
+{
+  kokkos::RangeParallelOp iter = op->getParentOfType<kokkos::RangeParallelOp>();
+  while(iter) {
+    if(iter.getParallelLevel() == kokkos::ParallelLevel::ThreadVector ||
+        iter.getParallelLevel() == kokkos::ParallelLevel::TeamVector) {
+      return true;
+    }
+    iter = iter->getParentOfType<kokkos::RangeParallelOp>();
+  }
+  return false;
+}
+
+// Within the given loop, wrap individual ops inside kokkos.single as needed.
+void insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
+  loop->walk<WalkOrder::PostOrder>([&](Operation* op)
+  {
+    if(opNeedsSingle(op)) {
+      if(inTeamLoop(op) && !inThreadLoop(op)) {
+        // op needs to be in PerTeam single
+        auto single = rewriter.create<kokkos::SingleOp>(
+            op->getLoc(), op->getResultTypes(),
+            kokkos::SingleLevel::PerTeam);
+        auto singleBody = rewriter.createBlock(&single.getRegion());
+        rewriter.setInsertionPointToStart(singleBody);
+        auto singleWrappedOp = rewriter.clone(*op);
+        rewriter.create<kokkos::YieldOp>(op->getLoc(),
+                                         singleWrappedOp->getResults());
+        rewriter.replaceOp(op, single);
+      }
+      else if(inThreadLoop(op) && !inVectorLoop(op)) {
+        // op needs to be in PerThread single
+        auto single = rewriter.create<kokkos::SingleOp>(
+            op->getLoc(), op->getResultTypes(),
+            kokkos::SingleLevel::PerThread);
+        auto singleBody = rewriter.createBlock(&single.getRegion());
+        rewriter.setInsertionPointToStart(singleBody);
+        auto singleWrappedOp = rewriter.clone(*op);
+        rewriter.create<kokkos::YieldOp>(op->getLoc(),
+                                         singleWrappedOp->getResults());
+        rewriter.replaceOp(op, single);
+      }
+      return WalkResult::skip();
+    }
+    return WalkResult::advance();
+  });
+}
+
+// !! TODO: team synchronization requires dataflow analysis within op's body
+// to understand what specific memrefs might be in use at each point
+// (reading or writing) by other threads executing a team-level loop or single.
+//
+// So for now, conservatively insert a barrier after each team-wide parallel op
+// and single that does not already synchronize. This is obviously not ideal for
+// performance of complex kernels, but most of our common examples (spmv-like
+// patterns, fused batched gemv/axpy) are not affected.
+void insertTeamSynchronization(RewriterBase &rewriter,
+                                        kokkos::TeamParallelOp op) {
+  op->walk([&](kokkos::RangeParallelOp nestedOp) {
+    auto level = nestedOp.getParallelLevel();
+    bool needsPostBarrier = (nestedOp.getNumResults() == 0) &&
+                            (level == kokkos::ParallelLevel::TeamThread ||
+                             level == kokkos::ParallelLevel::TeamVector);
+    if (needsPostBarrier) {
+      rewriter.setInsertionPointAfter(nestedOp);
+      rewriter.create<kokkos::TeamBarrierOp>(nestedOp.getLoc());
+    }
+  });
+  op->walk([&](kokkos::SingleOp single) {
+    bool needsPostBarrier = single.getNumResults() == 0 &&
+                            single.getLevel() == kokkos::SingleLevel::PerTeam;
+    if (needsPostBarrier) {
+      rewriter.setInsertionPointAfter(single);
+      rewriter.create<kokkos::TeamBarrierOp>(single.getLoc());
+    }
+  });
 }
 
 // Recursively map the scf.parallel children of op.
