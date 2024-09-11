@@ -359,9 +359,11 @@ bool inTeamLoop(Operation* op)
   return op->getParentOfType<kokkos::TeamParallelOp>();
 }
 
-// is op inside a thread parallel loop? (TeamThreadRange)
+// is op inside a thread parallel loop? (ThreadParallelOp, or RangeParallelOp with TeamThreadRange)
 bool inThreadLoop(Operation* op)
 {
+  if(op->getParentOfType<kokkos::ThreadParallelOp>())
+    return true;
   kokkos::RangeParallelOp iter = op->getParentOfType<kokkos::RangeParallelOp>();
   while(iter) {
     if(iter.getParallelLevel() == kokkos::ParallelLevel::TeamThread)
@@ -371,18 +373,15 @@ bool inThreadLoop(Operation* op)
   return false;
 }
 
-// is op inside a vector parallel context? (ThreadVectorRange or TeamVectorRange)
+// is op inside a vector parallel loop? (ThreadVectorRange or TeamVectorRange)
 bool inVectorLoop(Operation* op)
 {
-  kokkos::RangeParallelOp iter = op->getParentOfType<kokkos::RangeParallelOp>();
-  while(iter) {
-    if(iter.getParallelLevel() == kokkos::ParallelLevel::ThreadVector ||
-        iter.getParallelLevel() == kokkos::ParallelLevel::TeamVector) {
-      return true;
-    }
-    iter = iter->getParentOfType<kokkos::RangeParallelOp>();
-  }
-  return false;
+  // if we are inside a vector loop, it must be the innermost RangeParallel
+  kokkos::RangeParallelOp par = op->getParentOfType<kokkos::RangeParallelOp>();
+  if(!par)
+    return false;
+  return par.getParallelLevel() == kokkos::ParallelLevel::ThreadVector ||
+        par.getParallelLevel() == kokkos::ParallelLevel::TeamVector;
 }
 
 // Within the given loop, wrap individual ops inside kokkos.single as needed.
@@ -390,6 +389,7 @@ void insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
   loop->walk<WalkOrder::PostOrder>([&](Operation* op)
   {
     if(opNeedsSingle(op)) {
+      rewriter.setInsertionPoint(op);
       if(inTeamLoop(op) && !inThreadLoop(op)) {
         // op needs to be in PerTeam single
         auto single = rewriter.create<kokkos::SingleOp>(

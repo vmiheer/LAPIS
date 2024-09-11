@@ -23,7 +23,10 @@ module {
         }) : (f64) -> ()
         kokkos.yield
       } {executionSpace = 1 : i64, parallelLevel = 3 : i64}
-      memref.store %5, %arg0[%arg5] : memref<?xf64>
+      "kokkos.single"() <{level = 1 : i64}> ({
+        memref.store %5, %arg0[%arg5] : memref<?xf64>
+        kokkos.yield
+      }) : () -> ()
       kokkos.yield
     }) : (index, index) -> ()
     return
