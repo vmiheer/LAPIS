@@ -232,6 +232,10 @@ void TeamParallelOp::build(
     ValueRange initVals,
     function_ref<void(OpBuilder &, Location, ValueRange)>
         bodyBuilderFn) {
+  result.addOperands(leagueSize);
+  result.addOperands(teamSizeHint);
+  result.addOperands(vectorLengthHint);
+  result.addOperands(initVals);
   result.addTypes(initVals.getTypes());
 
   OpBuilder::InsertionGuard guard(builder);
@@ -397,13 +401,16 @@ void ThreadParallelOp::build(
     Value numIters, Value vectorLengthHint, ValueRange initVals,
     function_ref<void(OpBuilder &, Location, ValueRange)>
         bodyBuilderFn) {
+  result.addOperands(numIters);
+  result.addOperands(vectorLengthHint);
+  result.addOperands(initVals);
   result.addTypes(initVals.getTypes());
 
   OpBuilder::InsertionGuard guard(builder);
-  SmallVector<Type, 8> argTypes(5, builder.getIndexType());
-  SmallVector<Location, 8> argLocs(5, result.location);
+  Type argType = builder.getIndexType();
+  Location argLoc = result.location;
   Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
+  Block *bodyBlock = builder.createBlock(bodyRegion, {}, ArrayRef<Type>(argType), ArrayRef<Location>(argLoc));
 
   if (bodyBuilderFn) {
     builder.setInsertionPointToStart(bodyBlock);
