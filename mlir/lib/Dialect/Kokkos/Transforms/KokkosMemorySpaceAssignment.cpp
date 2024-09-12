@@ -20,13 +20,21 @@ using namespace mlir;
 
 namespace {
 
-struct KokkosMemorySpaceRewriter : public OpRewritePattern<scf::ParallelOp> {
-  using OpRewritePattern<scf::ParallelOp>::OpRewritePattern;
+struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
+  using OpRewritePattern<ModuleOp>::OpRewritePattern;
 
   KokkosMemorySpaceRewriter (MLIRContext *context)
       : OpRewritePattern(context) {}
 
-  LogicalResult matchAndRewrite(scf::ParallelOp op, PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ModuleOp op, PatternRewriter &rewriter) const override {
+    // For each new memref-typed value (block argument or one produced by an op),
+    // iterate over all ops that use it and assign its memory space based on whether
+    // those ops are in device or host code.
+    //
+    // Not all ops count as a "use" for this so skip: alloc/alloca/dealloc and slicing/viewing/casting ops.
+    // These never actually access data. For example, an alloc may run on host and
+    // allocate a device memref, but that doesn't mean the memref should also be accessible on host.
+    
     return failure();
   }
 };
@@ -35,6 +43,6 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<scf::ParallelOp> {
 
 void mlir::populateKokkosMemorySpaceAssignmentPatterns(RewritePatternSet &patterns)
 {
-  //patterns.add<KokkosMemorySpaceRewriter>(patterns.getContext());
+  patterns.add<KokkosMemorySpaceRewriter>(patterns.getContext());
 }
 
