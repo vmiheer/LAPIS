@@ -34,7 +34,6 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
     // Not all ops count as a "use" for this so skip: alloc/alloca/dealloc and slicing/viewing/casting ops.
     // These never actually access data. For example, an alloc may run on host and
     // allocate a device memref, but that doesn't mean the memref should also be accessible on host.
-    
     return failure();
   }
 };
@@ -43,6 +42,7 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
 
 void mlir::populateKokkosMemorySpaceAssignmentPatterns(RewritePatternSet &patterns)
 {
-  patterns.add<KokkosMemorySpaceRewriter>(patterns.getContext());
+  patterns.add<MemSpaceConverter>(typeConverter, patterns.getContext(), createSparseDeallocs);
+  //patterns.add<KokkosMemorySpaceRewriter>(patterns.getContext());
 }
 
