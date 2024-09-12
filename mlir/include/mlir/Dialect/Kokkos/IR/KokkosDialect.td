@@ -76,7 +76,6 @@ class Kokkos_Op<string mnemonic, list<Trait> traits = []>
 
 def RangeParallelOp : Kokkos_Op<"range_parallel",
     [AutomaticAllocationScope,
-     AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
      RecursiveMemoryEffects,
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
@@ -87,20 +86,14 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
 
   let arguments = (ins Kokkos_ExecutionSpace:$executionSpace,
                        Kokkos_ParallelLevel:$parallelLevel,
-                       Variadic<Index>:$upperBound,
-                       Variadic<AnyType>:$initVals);
+                       Variadic<Index>:$upperBound);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel, "ValueRange":$upperBounds,
-      "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel, "ValueRange":$upperBounds,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
+    OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel,
+    "ValueRange":$upperBounds, "TypeRange":$resultTypes)>
   ];
 
   let extraClassDeclaration = [{
@@ -108,7 +101,7 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
       return getBody()->getArguments();
     }
     unsigned getNumLoops() { return getUpperBound().size(); }
-    unsigned getNumReductions() { return getInitVals().size(); }
+    unsigned getNumReductions() { return getNumResults(); }
   }];
 
   let hasCanonicalizer = 0;
@@ -141,12 +134,7 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   // The real team size/vector length have to be computed at runtime.
   let builders = [
     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
-      "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
+      "TypeRange":$resultTypes)>
   ];
 
   let extraClassDeclaration = [{
@@ -191,12 +179,8 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<(ins "Value":$numIters, "Value":$vectorLengthHint, "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
     OpBuilder<(ins "Value":$numIters, "Value":$vectorLengthHint,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
+    "TypeRange":$resultTypes)>
   ];
 
   let extraClassDeclaration = [{
@@ -272,40 +256,35 @@ def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"kokkos::Yield
   let hasVerifier = 0;
 }
 
-def ReduceOp : Kokkos_Op<"reduce",
+def UpdateReductionOp : Kokkos_Op<"update_reduction",
 [ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp"]>]>
 {
-  let summary = "Parallel reduction";
+  let summary = "Contribute to a reduction inside a parallel loop";
   let description = [{
+    Update a partial reduction inside a parallel loop.
+    The ``update`` operand is the value to contribute to the reduction.
+    The body defines the ``join`` operation for combining two partial reductions
+    or a partial reduction and a value.
+    The ``identity`` operand is the value for which ``join(x, identity) == x`` for all ``x``.
     The result of the reduce operation's body must have the same type as the
     operands and associated result value of the parallel loop operation.
-    Example:
-
-    ```mlir
-    %operand = arith.constant 1.0 : f32
-    kokkos.reduce(%operand) : f32 {
-      ^bb0(%lhs : f32, %rhs: f32):
-        %res = arith.addf %lhs, %rhs : f32
-        kokkos.yield %res : f32
-    }
-    ```
   }];
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "Value":$operand,
+    OpBuilder<(ins "Value":$update, "Value":$identity,
       CArg<"function_ref<void (OpBuilder &, Location, Value, Value)>",
            "nullptr">:$bodyBuilderFn)>
   ];
 
-  let arguments = (ins AnyType:$operand);
+  let arguments = (ins AnyType:$update, AnyType:$identity);
   let hasCustomAssemblyFormat = 0;
   let regions = (region SizedRegion<1>:$reductionOperator);
   let hasRegionVerifier = 0;
 }
 
 def YieldOp : Kokkos_Op<"yield", [Pure, ReturnLike, Terminator,
-    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp", "ReduceOp"]>]> {
+    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp", "UpdateReductionOp"]>]> {
   let summary = "Region terminator";
   let description = [{ 
     "kokkos.yield" terminates the region of a parallel, single or reduction op.

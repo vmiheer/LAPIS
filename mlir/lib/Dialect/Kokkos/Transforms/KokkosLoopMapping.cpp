@@ -117,7 +117,7 @@ Value buildIndexProduct(Location loc, RewriterBase &rewriter, ValRange vals) {
 // Kokkos dialect code lowered from SCF (everything handled by this pass) can
 // never do that.
 bool opNeedsSingle(Operation *op) {
-  return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op) || isa<kokkos::ReduceOp>(op);
+  return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op) || isa<kokkos::UpdateReductionOp>(op);
 }
 
 scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
@@ -176,11 +176,11 @@ scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
 // - scf.yield is not cloned at all
 // - scf.reduce is converted into a kokkos.reduce
 //   - and inside the reduce, scf.reduce.return is converted to kokkos.yield
-void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap) {
+void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap, Value reduceIdentity) {
   if(isa<scf::YieldOp>(op))
     return;
   else if(scf::ReduceOp reduce = dyn_cast<scf::ReduceOp>(op)) {
-    kokkos::ReduceOp newReduce = rewriter.create<kokkos::ReduceOp>(reduce->getLoc(), irMap.lookupOrDefault(reduce.getOperand()));
+    kokkos::UpdateReductionOp newReduce = rewriter.create<kokkos::UpdateReductionOp>(reduce->getLoc(), irMap.lookupOrDefault(reduce.getOperand()), irMap.lookupOrDefault(reduceIdentity));
     // Map (old to new) the two reduce block arguments
     Block& oldReduceBlock = reduce.getReductionOperator().front();
     Block& newReduceBlock = newReduce.getReductionOperator().front();
@@ -213,9 +213,17 @@ kokkos::RangeParallelOp scfParallelToKokkosRange(RewriterBase &rewriter,
                                                  kokkos::ExecutionSpace exec,
                                                  kokkos::ParallelLevel level) {
   rewriter.setInsertionPoint(op);
+  // If the loop has a reduction, reduceIdentity gives its identity element
+  // and resultTypes contains its type. Otherwise, they are nullptr and empty respectively.
+  Value reduceIdentity = nullptr;
+  SmallVector<Type> resultTypes;
+  if(op.getInitVals().size()) {
+    reduceIdentity = op.getInitVals().front();
+    resultTypes.push_back(reduceIdentity.getType());
+  }
   // Create the kokkos.parallel but don't populate the body yet
   auto kokkosRange = rewriter.create<kokkos::RangeParallelOp>(
-      op.getLoc(), exec, level, op.getUpperBound(), op.getInitVals(), nullptr);
+      op.getLoc(), exec, level, op.getUpperBound(), resultTypes);
   // Now inline the old loop's operations into the new loop (replacing all
   // usages of the induction variables) Need to omit scf.yield, so can't just
   // use rewriter.inlineBlockBefore
@@ -225,7 +233,7 @@ kokkos::RangeParallelOp scfParallelToKokkosRange(RewriterBase &rewriter,
     irMap.map(std::get<0>(p), std::get<1>(p));
   }
   for (Operation &oldOp : op.getBody()->getOperations()) {
-    inlineLoopBodyOp(rewriter, &oldOp, irMap);
+    inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
   }
   // The new loop is fully constructed.
   // Erase the old loop and replace uses of its results with those of the new
@@ -246,10 +254,17 @@ kokkos::TeamParallelOp scfParallelToKokkosTeam(RewriterBase &rewriter,
   // (this is easy because the bounds are in [0:N:1] form)
   auto origLoopBounds = op.getUpperBound();
   Value leagueSize = buildIndexProduct(op.getLoc(), rewriter, origLoopBounds);
+  // If the loop has a reduction, reduceIdentity gives its identity element
+  // and resultTypes contains its type. Otherwise, they are nullptr and empty respectively.
+  Value reduceIdentity = nullptr;
+  SmallVector<Type> resultTypes;
+  if(op.getInitVals().size()) {
+    reduceIdentity = op.getInitVals().front();
+    resultTypes.push_back(reduceIdentity.getType());
+  }
   // Create the kokkos.parallel but don't populate the body yet
   auto kokkosTeam = rewriter.create<kokkos::TeamParallelOp>(
-      op.getLoc(), leagueSize, teamSizeHint, vectorLengthHint, op.getInitVals(),
-      nullptr);
+      op.getLoc(), leagueSize, teamSizeHint, vectorLengthHint, resultTypes);
   // Now inline the old loop's operations into the new loop.
   rewriter.setInsertionPointToStart(&kokkosTeam.getLoopBody().front());
   IRMapping irMap;
@@ -285,7 +300,7 @@ kokkos::TeamParallelOp scfParallelToKokkosTeam(RewriterBase &rewriter,
     }
   }
   for (Operation &oldOp : op.getBody()->getOperations()) {
-    inlineLoopBodyOp(rewriter, &oldOp, irMap);
+    inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
   }
   // The new loop is fully constructed. Erase the old loop and replace uses of
   // its results with those of the new loop.
@@ -305,9 +320,17 @@ Operation *scfParallelToKokkosThread(RewriterBase &rewriter, scf::ParallelOp op,
   // (this is easy because the bounds are in [0:N:1] form)
   auto origLoopBounds = op.getUpperBound();
   Value numIters = buildIndexProduct(op.getLoc(), rewriter, origLoopBounds);
+  // If the loop has a reduction, reduceIdentity gives its identity element
+  // and resultTypes contains its type. Otherwise, they are nullptr and empty respectively.
+  Value reduceIdentity = nullptr;
+  SmallVector<Type> resultTypes;
+  if(op.getInitVals().size()) {
+    reduceIdentity = op.getInitVals().front();
+    resultTypes.push_back(reduceIdentity.getType());
+  }
   // Create the kokkos.parallel but don't populate the body yet
   auto kokkosThread = rewriter.create<kokkos::ThreadParallelOp>(
-      op.getLoc(), numIters, vectorLengthHint, op.getInitVals(), nullptr);
+      op.getLoc(), numIters, vectorLengthHint, resultTypes);
   // Now inline the old loop's operations into the new loop.
   rewriter.setInsertionPointToStart(&kokkosThread.getLoopBody().front());
   IRMapping irMap;
@@ -343,7 +366,7 @@ Operation *scfParallelToKokkosThread(RewriterBase &rewriter, scf::ParallelOp op,
     }
   }
   for (Operation &oldOp : op.getBody()->getOperations()) {
-    inlineLoopBodyOp(rewriter, &oldOp, irMap);
+    inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
   }
   // The new loop is fully constructed.
   // As a last step, erase the old loop and replace uses of its results with

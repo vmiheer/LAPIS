@@ -61,37 +61,19 @@ static TerminatorTy verifyAndGetTerminator(Operation *op, Region &region,
 
 void RangeParallelOp::build(
     OpBuilder &builder, OperationState &result, ::mlir::kokkos::ExecutionSpace executionSpace, ::mlir::kokkos::ParallelLevel parallelLevel,
-    ValueRange upperBounds, ValueRange initVals,
-    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
+    ValueRange upperBounds, TypeRange resultTypes) {
   result.addOperands(upperBounds);
-  result.addOperands(initVals);
-  result.addAttribute(
-      RangeParallelOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(upperBounds.size()),
-                                    static_cast<int32_t>(initVals.size())}));
   result.addAttribute("executionSpace", ExecutionSpaceAttr::get(builder.getContext(), executionSpace));
   result.addAttribute("parallelLevel", ParallelLevelAttr::get(builder.getContext(), parallelLevel));
-  result.addTypes(initVals.getTypes());
+  result.addTypes(resultTypes);
 
   OpBuilder::InsertionGuard guard(builder);
   unsigned numIVs = upperBounds.size();
   SmallVector<Type, 8> argTypes(numIVs, builder.getIndexType());
   SmallVector<Location, 8> argLocs(numIVs, result.location);
   Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location,
-                  bodyBlock->getArguments());
-  }
+  builder.createBlock(bodyRegion, {}, argTypes, argLocs);
   RangeParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
-}
-
-void RangeParallelOp::build(
-    OpBuilder &builder, OperationState &result, ::mlir::kokkos::ExecutionSpace executionSpace, ::mlir::kokkos::ParallelLevel parallelLevel,
-    ValueRange upperBounds, function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  build(builder, result, executionSpace, parallelLevel, upperBounds, ValueRange(), bodyBuilderFn);
 }
 
 Region &RangeParallelOp::getLoopBody() { return getRegion(); }
@@ -111,13 +93,6 @@ ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) 
       parser.resolveOperands(upper, builder.getIndexType(), result.operands))
     return failure();
 
-  // Parse init values.
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> initVals;
-  if (succeeded(parser.parseOptionalKeyword("init"))) {
-    if (parser.parseOperandList(initVals, OpAsmParser::Delimiter::Paren))
-      return failure();
-  }
-
   // Parse optional results in case there is a reduce.
   if (parser.parseOptionalArrowTypeList(result.types))
     return failure();
@@ -129,16 +104,8 @@ ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) 
   if (parser.parseRegion(*body, ivs))
     return failure();
 
-  // Set `operandSegmentSizes` attribute.
-  result.addAttribute(
-      RangeParallelOp::getOperandSegmentSizeAttr(),
-      builder.getDenseI32ArrayAttr({static_cast<int32_t>(upper.size()),
-                                    static_cast<int32_t>(initVals.size())}));
-
   // Parse attributes.
-  if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.resolveOperands(initVals, result.types, parser.getNameLoc(),
-                             result.operands))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Add a terminator if none was parsed.
@@ -148,14 +115,10 @@ ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) 
 
 void RangeParallelOp::print(OpAsmPrinter &p) {
   p << " (" << getBody()->getArguments() << ") -> (" << getUpperBound() << ")";
-  if (!getInitVals().empty())
-    p << " init (" << getInitVals() << ")";
   p.printOptionalArrowTypeList(getResultTypes());
   p << ' ';
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict(
-      (*this)->getAttrs(),
-      /*elidedAttrs=*/RangeParallelOp::getOperandSegmentSizeAttr());
+  p.printOptionalAttrDict((*this)->getAttrs());
 }
 
 void RangeParallelOp::getSuccessorRegions(
@@ -195,25 +158,28 @@ LogicalResult RangeParallelOp::verify() {
     return yield.emitOpError() << "not allowed to have operands inside '"
                                << RangeParallelOp::getOperationName() << "'";
 
-  // Check that the number of results is the same as the number of ReduceOps.
-  SmallVector<mlir::kokkos::ReduceOp, 4> reductions(body->getOps<mlir::kokkos::ReduceOp>());
+  // Check that the number of results is the same as the number of UpdateReductionOps.
+  // Reductions can appear in 2 places: either directly as a child of body,
+  // or in a single. If in a single, the single must be a direct child of body.
+  SmallVector<kokkos::UpdateReductionOp, 4> reductions;
+  for(auto reduce : body->getOps<kokkos::UpdateReductionOp>()) {
+      reductions.push_back(reduce);
+  }
+  for(auto single : body->getOps<kokkos::SingleOp>()) {
+    for(auto reduce : single.getRegion().front().getOps<kokkos::UpdateReductionOp>()) {
+        reductions.push_back(reduce);
+    }
+  }
   auto resultsSize = getResults().size();
-  auto reductionsSize = reductions.size();
-  auto initValsSize = getInitVals().size();
-  if (resultsSize != reductionsSize)
+  if (resultsSize != reductions.size())
     return emitOpError() << "expects number of results: " << resultsSize
                          << " to be the same as number of reductions: "
-                         << reductionsSize;
-  if (resultsSize != initValsSize)
-    return emitOpError() << "expects number of results: " << resultsSize
-                         << " to be the same as number of initial values: "
-                         << initValsSize;
-
+                         << reductions.size();
   // Check that the types of the results and reductions are the same.
   for (auto resultAndReduce : llvm::zip(getResults(), reductions)) {
     auto resultType = std::get<0>(resultAndReduce).getType();
     auto reduceOp = std::get<1>(resultAndReduce);
-    auto reduceType = reduceOp.getOperand().getType();
+    auto reduceType = reduceOp.getUpdate().getType();
     if (resultType != reduceType)
       return reduceOp.emitOpError()
              << "expects type of reduce: " << reduceType
@@ -229,33 +195,18 @@ LogicalResult RangeParallelOp::verify() {
 void TeamParallelOp::build(
     OpBuilder &builder, OperationState &result,
     Value leagueSize, Value teamSizeHint, Value vectorLengthHint,
-    ValueRange initVals,
-    function_ref<void(OpBuilder &, Location, ValueRange)>
-        bodyBuilderFn) {
+    TypeRange resultTypes) {
   result.addOperands(leagueSize);
   result.addOperands(teamSizeHint);
   result.addOperands(vectorLengthHint);
-  result.addOperands(initVals);
-  result.addTypes(initVals.getTypes());
+  result.addTypes(resultTypes);
 
   OpBuilder::InsertionGuard guard(builder);
   SmallVector<Type, 8> argTypes(5, builder.getIndexType());
   SmallVector<Location, 8> argLocs(5, result.location);
   Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, argTypes, argLocs);
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location, bodyBlock->getArguments());
-  }
+  builder.createBlock(bodyRegion, {}, argTypes, argLocs);
   TeamParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
-}
-
-void TeamParallelOp::build(
-    OpBuilder &builder, OperationState &result,
-    Value leagueSize, Value teamSizeHint, Value vectorLengthHint,
-    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  build(builder, result, leagueSize, teamSizeHint, vectorLengthHint, ValueRange(), bodyBuilderFn);
 }
 
 Region &TeamParallelOp::getLoopBody() { return getRegion(); }
@@ -364,8 +315,18 @@ LogicalResult TeamParallelOp::verify() {
     return yield.emitOpError() << "not allowed to have operands inside '"
                                << RangeParallelOp::getOperationName() << "'";
 
-  // Check that the number of results is the same as the number of ReduceOps.
-  SmallVector<mlir::kokkos::ReduceOp, 4> reductions(body->getOps<mlir::kokkos::ReduceOp>());
+  // Check that the number of results is the same as the number of UpdateReductionOps.
+  // Reductions can appear in 2 places: either directly as a child of body,
+  // or in a single. If in a single, the single must be a direct child of body.
+  SmallVector<kokkos::UpdateReductionOp, 4> reductions;
+  for(auto reduce : body->getOps<kokkos::UpdateReductionOp>()) {
+      reductions.push_back(reduce);
+  }
+  for(auto single : body->getOps<kokkos::SingleOp>()) {
+    for(auto reduce : single->getOps<kokkos::UpdateReductionOp>()) {
+        reductions.push_back(reduce);
+    }
+  }
   auto resultsSize = getResults().size();
   auto reductionsSize = reductions.size();
   auto initValsSize = getInitVals().size();
@@ -398,32 +359,18 @@ LogicalResult TeamParallelOp::verify() {
 
 void ThreadParallelOp::build(
     OpBuilder &builder, OperationState &result,
-    Value numIters, Value vectorLengthHint, ValueRange initVals,
-    function_ref<void(OpBuilder &, Location, ValueRange)>
-        bodyBuilderFn) {
+    Value numIters, Value vectorLengthHint,
+    TypeRange resultTypes) {
   result.addOperands(numIters);
   result.addOperands(vectorLengthHint);
-  result.addOperands(initVals);
-  result.addTypes(initVals.getTypes());
+  result.addTypes(resultTypes);
 
   OpBuilder::InsertionGuard guard(builder);
   Type argType = builder.getIndexType();
   Location argLoc = result.location;
   Region *bodyRegion = result.addRegion();
-  Block *bodyBlock = builder.createBlock(bodyRegion, {}, ArrayRef<Type>(argType), ArrayRef<Location>(argLoc));
-
-  if (bodyBuilderFn) {
-    builder.setInsertionPointToStart(bodyBlock);
-    bodyBuilderFn(builder, result.location, bodyBlock->getArguments());
-  }
+  builder.createBlock(bodyRegion, {}, ArrayRef<Type>(argType), ArrayRef<Location>(argLoc));
   ThreadParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
-}
-
-void ThreadParallelOp::build(
-    OpBuilder &builder, OperationState &result,
-    Value numIters, Value vectorLengthHint,
-    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
-  build(builder, result, numIters, vectorLengthHint, ValueRange(), bodyBuilderFn);
 }
 
 Region &ThreadParallelOp::getLoopBody() { return getRegion(); }
@@ -446,11 +393,12 @@ LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
   return success();
 }
 
-void ReduceOp::build(
-    OpBuilder &builder, OperationState &result, Value operand,
+void UpdateReductionOp::build(
+    OpBuilder &builder, OperationState &result, Value update, Value identity,
     function_ref<void(OpBuilder &, Location, Value, Value)> bodyBuilderFn) {
-  auto type = operand.getType();
-  result.addOperands(operand);
+  auto type = update.getType();
+  result.addOperands(update);
+  result.addOperands(identity);
 
   OpBuilder::InsertionGuard guard(builder);
   Region *bodyRegion = result.addRegion();
