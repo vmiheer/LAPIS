@@ -10,17 +10,17 @@ module {
       %2 = arith.addi %arg5, %c1 : index
       %3 = memref.load %arg1[%2] : memref<?xindex>
       %4 = arith.subi %3, %1 : index
-      %5 = kokkos.range_parallel (%arg6) -> (%4) init (%0) -> f64 {
+      %5 = kokkos.range_parallel (%arg6) -> (%4) -> f64 {
         %6 = arith.addi %1, %arg6 : index
         %7 = memref.load %arg2[%6] : memref<?xindex>
         %8 = memref.load %arg3[%6] : memref<?xf64>
         %9 = memref.load %arg4[%7] : memref<?xf64>
         %10 = arith.mulf %8, %9 : f64
-        "kokkos.reduce"(%10) ({
+        "kokkos.update_reduction"(%10, %0) ({
         ^bb0(%arg7: f64, %arg8: f64):
           %11 = arith.addf %arg7, %arg8 : f64
           kokkos.yield %11 : f64
-        }) : (f64) -> ()
+        }) : (f64, f64) -> ()
         kokkos.yield
       } {executionSpace = 1 : i64, parallelLevel = 3 : i64}
       "kokkos.single"() <{level = 1 : i64}> ({
