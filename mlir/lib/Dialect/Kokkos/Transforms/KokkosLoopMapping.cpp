@@ -134,7 +134,9 @@ scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
           irMap.map(std::get<0>(p), std::get<1>(p));
         }
         for (Operation &oldOp : op.getBody()->getOperations()) {
-          if (auto reduce = dyn_cast<scf::ReduceOp>(oldOp)) {
+          if (isa<scf::YieldOp>(oldOp))
+            continue;
+          else if (auto reduce = dyn_cast<scf::ReduceOp>(oldOp)) {
             // TODO: when LLVM is updated, this should be modified to support
             // arbitrary number of reductions The basic structure is the same,
             // but now the reduce can have N operands and N regions, each doing
