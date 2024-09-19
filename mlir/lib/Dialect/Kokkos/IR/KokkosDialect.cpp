@@ -11,6 +11,7 @@
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
@@ -417,4 +418,98 @@ void UpdateReductionOp::build(
 //===----------------------------------------------------------------------===//
 // convenience methods.
 //===----------------------------------------------------------------------===//
+
+namespace mlir::kokkos {
+Value getParentMemref(Value v)
+{
+  Operation* op = v.getDefiningOp();
+  if(!op)
+    return v;
+  return llvm::TypeSwitch<Operation*, Value>(op)
+    .Case<memref::SubViewOp, memref::CollapseShapeOp, memref::CastOp, memref::ReinterpretCastOp>(
+    [&](auto op) { return getParentMemref(op->getOperand(0)); })
+    .Default([&](Operation*) {
+        return v;
+    });
+}
+
+func::FuncOp getCalledFunction(func::CallOp callOp) {
+  SymbolRefAttr sym =
+      llvm::dyn_cast_if_present<SymbolRefAttr>(callOp.getCallableForCallee());
+  if (!sym)
+    return nullptr;
+  return dyn_cast_or_null<func::FuncOp>(
+      SymbolTable::lookupNearestSymbolFrom(callOp, sym));
+}
+
+MemorySpace getMemSpace(Value v)
+{
+  // First, any value that is passed to or returned from an extern function
+  // is assumed to be represented on host (so either host or dualview)
+  bool hostRepresented = false;
+  bool deviceRepresented = false;
+  // device represented if and only if v is used in an op enclosed in a kokkos.team_parallel,
+  // kokkos.thread_parallel or a kokkos.range_parallel with execution space == Device.
+  for (auto& use : v.getUses()) {
+    Operation* usingOp = use.getOwner();
+    if(usingOp->getParentOfType<kokkos::ThreadParallelOp>() ||
+        usingOp->getParentOfType<kokkos::TeamParallelOp>()) {
+      deviceRepresented = true;
+    }
+    else if(auto rangePar = usingOp->getParentOfType<kokkos::RangeParallelOp>()) {
+      if(rangePar.getExecutionSpace() == ExecutionSpace::Host) {
+        hostRepresented = true;
+      }
+      else {
+        // rangePar's execution space is either TeamHandle
+        // (which always indicates execution on device)
+        // or Device (for the top-level RangePolicy).
+        deviceRepresented = true;
+      }
+    }
+    else if(auto call = dyn_cast<func::CallOp>(usingOp)) {
+      // v is used here as a call argument
+      func::FuncOp callee = ::mlir::kokkos::getCalledFunction(call);
+      // If we can't resolve call to a FuncOp, we can't do any analysis
+      if(!callee)
+        continue;
+      // If callee is extern (a declaration only), assume the function definition only access v on host.
+      // This applies to sparse tensor/part tensor runtime library calls.
+      if(callee.isExternal()) {
+        hostRepresented = true;
+      }
+      else {
+        // Assume we need both host and device representation.
+        // At runtime, this will translate to a lazy DualView.
+        hostRepresented = true;
+        deviceRepresented = true;
+      }
+    }
+  }
+  // Finally, if v is a result of a call, make sure it's represented correctly.
+  // If it's the result of a call to an extern function, assume it's present on host.
+  if(auto call = v.getDefiningOp<func::CallOp>()) {
+    func::FuncOp callee = getCalledFunction(call);
+    // If we can't resolve call to a FuncOp, we can't do any analysis
+    if(callee && callee.isExternal()) {
+      hostRepresented = true;
+    }
+  }
+  // TODO: analyze the full call graph.
+  // Check all return statements in a FuncOp,
+  // and join the spaces of all possible returned values.
+  // Note: if v appears to be used on neither host or device, put it on host.
+  if(!deviceRepresented) {
+    // either host only, or neither
+    return MemorySpace::Host;
+  }
+  else {
+    // Device represented
+    if(hostRepresented)
+      return MemorySpace::DualView;
+    else
+      return MemorySpace::Device;
+  }
+}
+}
 

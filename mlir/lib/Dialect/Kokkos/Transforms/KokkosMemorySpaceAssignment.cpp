@@ -27,6 +27,18 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
       : OpRewritePattern(context) {}
 
   LogicalResult matchAndRewrite(ModuleOp op, PatternRewriter &rewriter) const override {
+    return failure();
+    /*
+    if(op.getArgumentTypes().size() != 1)
+      return failure();
+    if(MemRefType mrt = dyn_cast<MemRefType>(op.getArgumentTypes[0])) {
+      printf("Trying to clone func, where the parameter adds a mem space attribute.\n");
+      auto attr = kokkos::MemorySpaceAttr::get(rewriter.getContext(), kokkos::MemorySpace::Device);
+      MemRefType newMRT = rewriter.create<MemRefType>(mrt.getShape(), mrt.getElementType(), mrt.getLayout(), attr);
+      auto newFunc = rewriter.create<func::FuncOp>
+      return success();
+    }
+
     // For each new memref-typed value (block argument or one produced by an op),
     // iterate over all ops that use it and assign its memory space based on whether
     // those ops are in device or host code.
@@ -35,6 +47,7 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
     // These never actually access data. For example, an alloc may run on host and
     // allocate a device memref, but that doesn't mean the memref should also be accessible on host.
     return failure();
+    */
   }
 };
 
@@ -42,7 +55,6 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
 
 void mlir::populateKokkosMemorySpaceAssignmentPatterns(RewritePatternSet &patterns)
 {
-  patterns.add<MemSpaceConverter>(typeConverter, patterns.getContext(), createSparseDeallocs);
   //patterns.add<KokkosMemorySpaceRewriter>(patterns.getContext());
 }
 

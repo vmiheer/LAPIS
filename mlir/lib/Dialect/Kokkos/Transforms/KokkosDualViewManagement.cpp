@@ -19,13 +19,13 @@ using namespace mlir;
 
 namespace {
 
-struct KokkosDualViewRewriter : public OpRewritePattern<scf::ParallelOp> {
-  using OpRewritePattern<scf::ParallelOp>::OpRewritePattern;
+struct KokkosDualViewRewriter : public OpRewritePattern<func::FuncOp> {
+  using OpRewritePattern<func::FuncOp>::OpRewritePattern;
 
   KokkosDualViewRewriter (MLIRContext *context)
       : OpRewritePattern(context) {}
 
-  LogicalResult matchAndRewrite(scf::ParallelOp op, PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(func::FuncOp op, PatternRewriter &rewriter) const override {
     return failure();
   }
 };
@@ -34,6 +34,6 @@ struct KokkosDualViewRewriter : public OpRewritePattern<scf::ParallelOp> {
 
 void mlir::populateKokkosDualViewManagementPatterns(RewritePatternSet &patterns)
 {
-  //patterns.add<KokkosDualViewRewriter>(patterns.getContext());
+  patterns.add<KokkosDualViewRewriter>(patterns.getContext());
 }
 
