@@ -19,6 +19,7 @@ using namespace mlir;
 
 namespace {
 
+/*
 struct KokkosDualViewRewriter : public OpRewritePattern<func::FuncOp> {
   using OpRewritePattern<func::FuncOp>::OpRewritePattern;
 
@@ -29,11 +30,12 @@ struct KokkosDualViewRewriter : public OpRewritePattern<func::FuncOp> {
     return failure();
   }
 };
+*/
 
 } // namespace
 
 void mlir::populateKokkosDualViewManagementPatterns(RewritePatternSet &patterns)
 {
-  patterns.add<KokkosDualViewRewriter>(patterns.getContext());
+  //patterns.add<KokkosDualViewRewriter>(patterns.getContext());
 }
 

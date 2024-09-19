@@ -20,6 +20,7 @@ using namespace mlir;
 
 namespace {
 
+/*
 struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
   using OpRewritePattern<ModuleOp>::OpRewritePattern;
 
@@ -28,7 +29,6 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
 
   LogicalResult matchAndRewrite(ModuleOp op, PatternRewriter &rewriter) const override {
     return failure();
-    /*
     if(op.getArgumentTypes().size() != 1)
       return failure();
     if(MemRefType mrt = dyn_cast<MemRefType>(op.getArgumentTypes[0])) {
@@ -47,9 +47,9 @@ struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
     // These never actually access data. For example, an alloc may run on host and
     // allocate a device memref, but that doesn't mean the memref should also be accessible on host.
     return failure();
-    */
   }
 };
+*/
 
 } // namespace
 

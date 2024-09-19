@@ -45,13 +45,6 @@
 using namespace mlir;
 using llvm::formatv;
 
-enum struct MemSpace
-{
-  Host,
-  Device,
-  General
-};
-
 /// Convenience functions to produce interleaved output with functions returning
 /// a LogicalResult. This is different than those in STLExtras as functions used
 /// on each element doesn't return a string.
@@ -223,22 +216,8 @@ struct KokkosCppEmitter {
   LogicalResult emitType(Location loc, Type type, bool forSparseRuntime = false);
 
   // Emit a memref type as a Kokkos::View, with the given memory space.
-  LogicalResult emitMemrefType(Location loc, MemRefType type, MemSpace space);
-  LogicalResult emitMemrefType(Location loc, UnrankedMemRefType type, MemSpace space);
-
-  StringRef memspaceToName(MemSpace space)
-  {
-    switch(space)
-    {
-      case MemSpace::Host:
-        return "Kokkos::HostSpace";
-      case MemSpace::Device:
-        return "Kokkos::DefaultExecutionSpace";
-      case MemSpace::General:
-        return "Kokkos::AnonymousSpace";
-    }
-    return "???";
-  }
+  LogicalResult emitMemrefType(Location loc, MemRefType type, kokkos::MemorySpace space);
+  //LogicalResult emitMemrefType(Location loc, UnrankedMemRefType type, kokkos::MemorySpace space);
 
   /// Emits array of types as a std::tuple of the emitted types.
   /// - emits void for an empty array;
@@ -279,6 +258,9 @@ struct KokkosCppEmitter {
 
   /// Return the existing or a new name for a Value.
   StringRef getOrCreateName(Value val);
+
+  /// Directly assign a name for a Value.
+  void assignName(StringRef name, Value val);
 
   /// Return the existing or a new label of a Block.
   StringRef getOrCreateName(Block &block);
@@ -462,18 +444,12 @@ private:
   //   (e.g. "_mlir_ciface_newSparseTensor")
   std::unordered_map<std::string, std::pair<bool, std::string>> sparseSupportFunctions;
   //This helper function (to be called during constructor) populates sparseSupportFunctions
-  void populateSparseSupportFunctions();
+  void registerRuntimeSupportFunctions();
 public:
   bool isSparseSupportFunction(StringRef s) {return sparseSupportFunctions.find(s.str()) != sparseSupportFunctions.end();}
   bool sparseSupportFunctionPointerResults(StringRef mlirName) {return sparseSupportFunctions[mlirName.str()].first;}
   // Get the real C function name for the given MLIR function name
   std::string getSparseSupportFunctionName(StringRef mlirName) {return sparseSupportFunctions[mlirName.str()].second;}
-
-  // Bookeeping for memory spaces of memrefs allocated in this program (either Host or Device),
-  // or produced by a sparse runtime function (always Host).
-  // This information is needed to emit types with the correct space, so that
-  // the Kokkos code can use deep_copy on these Views.
-  llvm::DenseMap<Value, MemSpace> memrefSpaces;
 };
 } // namespace
 
@@ -526,28 +502,26 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::GetGlobalOp op) {
-  Operation *operation = op.getOperation();
-
-  // Emit a variable declaration.
-  if (failed(emitter.emitAssignPrefix(*operation)))
-    return failure();
-
-  //Emit just the name of the global symbol (shallow copy)
-  emitter << op.getName();
+  // Do not declare a new C++ variable for the result.
+  // Instead, just reference the global by name wherever it's used.
+  emitter.assignName(op.getName(), op.getResult());
   return success();
 }
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::AllocOp op) {
-  Operation *operation = op.getOperation();
-  OpResult result = operation->getResult(0);
-  // Register the result as being in Host memory
-  emitter.memrefSpaces[result] = MemSpace::Host;
+  OpResult result = op->getResult(0);
+  kokkos::MemorySpace space = kokkos::getMemSpace(result);
   MemRefType type = op.getType();
-  if (failed(emitter.emitMemrefType(op.getLoc(), type, MemSpace::Host)))
+  if (failed(emitter.emitMemrefType(op.getLoc(), type, space)))
     return failure();
-  emitter << " " << emitter.getOrCreateName(result);
-  emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << emitter.getOrCreateName(result) << "\")";
+  StringRef name = emitter.getOrCreateName(result);
+  emitter << " " << name;
+  if(space == kokkos::MemorySpace::DualView)
+    emitter << "(\"" << emitter.getOrCreateName(result) << "\"";
+  else
+    emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << emitter.getOrCreateName(result) << "\"))";
+  emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << name << "\")";
   for(auto dynSize : op.getDynamicSizes())
   {
     emitter << ", ";
@@ -560,27 +534,36 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::AllocaOp op) {
-  Operation *operation = op.getOperation();
-  OpResult result = operation->getResult(0);
-  // Register the result as being in Host memory
-  emitter.memrefSpaces[result] = MemSpace::Host;
+  OpResult result = op->getResult(0);
+  kokkos::MemorySpace space = kokkos::getMemSpace(result);
   MemRefType type = op.getType();
-  if (failed(emitter.emitMemrefType(op.getLoc(), type, MemSpace::Host)))
+  if (failed(emitter.emitMemrefType(op.getLoc(), type, space)))
     return failure();
   emitter << " " << emitter.getOrCreateName(result);
-  emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << emitter.getOrCreateName(result) << "\"))";
+  if(space == kokkos::MemorySpace::DualView)
+    emitter << "(\"" << emitter.getOrCreateName(result) << "\")";
+  else
+    emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << emitter.getOrCreateName(result) << "\"))";
   return success();
 }
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::DeallocOp op) {
-  // Assign an empty view
+  OpResult result = op->getResult(0);
+  kokkos::MemorySpace space = kokkos::getMemSpace(result);
   if(failed(emitter.emitValue(op.getMemref())))
     return failure();
-  emitter << " = ";
-  if(failed(emitter.emitMemrefType(op.getLoc(), dyn_cast<MemRefType>(op.getMemref().getType()), MemSpace::Host)))
-    return failure();
-  emitter << "()";
+  if(space == kokkos::MemorySpace::DualView) {
+    // For DualView, call method to free both host and device views
+    emitter << ".deallocate()";
+  }
+  else {
+    // For Kokkos::View, free by assigning a default-constructed instance
+    emitter << " = ";
+    if(failed(emitter.emitMemrefType(op.getLoc(), dyn_cast<MemRefType>(op.getMemref().getType()), space)))
+      return failure();
+    emitter << "()";
+  }
   return success();
 }
 
@@ -598,6 +581,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   return success();
 }
 
+/*
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::ReinterpretCastOp op) {
   Value result = op.getResult();
@@ -650,7 +634,9 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ")";
   return success();
 }
+*/
 
+/*
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     gpu::AllocOp op) {
   Operation *operation = op.getOperation();
@@ -671,7 +657,9 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ")";
   return success();
 }
+*/
 
+/*
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     gpu::DeallocOp op) {
   // Assign an empty view
@@ -683,7 +671,9 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << "()";
   return success();
 }
+*/
 
+/*
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     gpu::MemcpyOp op) {
   if(emitter.isStridedSubview(op.getDst()) || emitter.isStridedSubview(op.getSrc()))
@@ -699,22 +689,12 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ")";
   return success();
 }
+*/
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     emitc::CallOp op) {
-  if (op.getCallee() == "createDeviceMirror")
-  {
-    //Intercept this case - the single result is a memref with MemSpace::Device
-    auto resultType = dyn_cast<MemRefType>(op.getResult(0).getType());
-    if (failed(emitter.emitMemrefType(op.getLoc(), resultType, MemSpace::Device)))
-      return failure();
-    emitter << " " << emitter.getOrCreateName(op.getResult(0)) << " = ";
-  }
-  else
-  {
-    if (failed(emitter.emitAssignPrefix(*op)))
-      return failure();
-  }
+  if (failed(emitter.emitAssignPrefix(*op)))
+    return failure();
 
   emitter << op.getCallee();
 
@@ -797,9 +777,6 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::CopyOp op) {
-  //TODO: if in device code, use a sequential loop or error out
-  //(not clear if this is possible in IR from linalg)
-  //
   //TODO: if source and/or target are strided subviews, must write a parallel loop and generate the strided accesses.
   //If neither are strided subviews, then Kokkos::deep_copy will be valid (may change layout, but will be within same memspace).
   if(emitter.isStridedSubview(op.getTarget()) || emitter.isStridedSubview(op.getSource()))
@@ -818,139 +795,140 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   return success();
 }
 
-static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    memref::SubViewOp op) {
-  Value result = op.getResult();
-  auto sourceType = dyn_cast<MemRefType>(op.getSource().getType());
-  // The subview will have the same space as the parent
-  emitter.memrefSpaces[result] = emitter.memrefSpaces[op.getSource()];
-  int sourceRank = sourceType.getRank();
-  if(emitter.isStridedSubview(op.getSource()))
-  {
-    return op.emitError("NOT SUPPORTED YET: strided subview of strided subview. Would need to figure out how to get extents correct");
-  }
-  //SubViewOp behavior
-  //  - Sizes/Offsets are required
-  //    - dynamic must take precedence over static, because sometimes both dynamic and static offsets are given but the static values are all -1.
-  //  - Strides are optional - if neither static nor dynamic strides are given, assume they are all 1
-  //  - Check the op.getDroppedDims() for a bit vector of which dimensions are kept (1) or discarded (0).
-  //    - This works just like the Kokkos::subview arguments - kept dims are given as a [begin, end) interval, and discarded as a single index.
-  emitter << "/* SubViewOp info\n";
-  emitter << "Source (rank-" << sourceRank << "): ";
-  if(failed(emitter.emitValue(op.getSource())))
-    return failure();
-  emitter << "\n";
-  emitter << "Sizes (dynamic): ";
-  for(auto s : op.getSizes())
-  {
-    (void) emitter.emitValue(s);
-    emitter << "  ";
-  }
-  emitter << "\n";
-  emitter << "Offsets (dynamic): ";
-  for(auto o : op.getOffsets())
-  {
-    (void) emitter.emitValue(o);
-    emitter << "  ";
-  }
-  emitter << "\n";
-  emitter << "Strides (dynamic): ";
-  for(auto s : op.getStrides())
-  {
-    (void) emitter.emitValue(s);
-    emitter << "  ";
-  }
-  emitter << "\n";
-  emitter << "Sizes (static): ";
-  for(auto s : op.getStaticSizes())
-  {
-    emitter << s << "  ";
-  }
-  emitter << "\n";
-  emitter << "Offsets (static): ";
-  for(auto o : op.getStaticOffsets())
-  {
-    emitter << o << "  ";
-  }
-  emitter << "\n";
-  emitter << "Strides (static): ";
-  for(auto s : op.getStaticStrides())
-  {
-    emitter << s << "  ";
-  }
-  emitter << "\n";
-  emitter << "Dropped Dims: ";
-  for(size_t i = 0; i < op.getDroppedDims().size(); i++)
-    emitter << op.getDroppedDims()[i] << " ";
-  emitter << "\n*/\n";
-  // TODO: what happens with sizes/staticSizes when a dimension is dropped?
-  // Is the size for dropped dimension just 1, or is the length of sizes one element shorter per dropped dim?
-  for(size_t i = 0; i < op.getDroppedDims().size(); i++)
-  {
-    if(op.getDroppedDims()[i])
-      return op.emitError("Do not yet support dropped dimensions in SubViewOp, see TODO.");
-  }
-  bool useDynamicSizes = op.getSizes().size();
-  bool useDynamicOffsets = op.getOffsets().size();
-  // TODO: need to carefully implement subviews with non-unit strides,
-  // since Kokkos::subview does not support this. Probably have to compute the strides per-dimension and then construct a LayoutStride object.
-  bool haveStrides = false;
-  if(op.getStrides().size())
-  {
-    //dynamic strides given, so they could be non-unit
-    haveStrides = true;
-  }
-  for(auto staticStride : op.getStaticStrides())
-  {
-    if(staticStride != 1)
-      haveStrides = true;
-  }
-  if(haveStrides)
-    return op.emitError("Do not yet support non-unit strides in SubViewOp, see TODO.");
-  auto emitSize = [&](int dim) -> LogicalResult
-  {
-    if(useDynamicSizes)
-    {
-      if(failed(emitter.emitValue(op.getSizes()[dim])))
-        return failure();
-    }
-    else
-      emitter << op.getStaticSizes()[dim];
-    return success();
-  };
-  auto emitOffset = [&](int dim) -> LogicalResult
-  {
-    if(useDynamicOffsets)
-    {
-      if(failed(emitter.emitValue(op.getOffsets()[dim])))
-        return failure();
-    }
-    else
-      emitter << op.getStaticOffsets()[dim];
-    return success();
-  };
-  emitter << "auto " << emitter.getOrCreateName(result) << " = Kokkos::subview(";
-  if(failed(emitter.emitValue(op.getSource())))
-    return failure();
-  for(int dim = 0; dim < sourceRank; dim++)
-  {
-    emitter << ", Kokkos::make_pair<int64_t, int64_t>(";
-    //interval for each dim is [offset, offset+size)
-    //TODO: this is only correct for unit strides, see above
-    if(failed(emitOffset(dim)))
-      return failure();
-    emitter << ", ";
-    if(failed(emitOffset(dim)))
-      return failure();
-    emitter << " + ";
-    if(failed(emitSize(dim)))
-      return failure();
-    emitter << ")";
-  }
-  emitter << ")";
-  return success();
-}
+//static LogicalResult printOperation(KokkosCppEmitter &emitter,
+//                                    memref::SubViewOp op) {
+//  Value result = op.getResult();
+//  auto sourceType = dyn_cast<MemRefType>(op.getSource().getType());
+//  // The subview will have the same space as the parent
+//  emitter.memrefSpaces[result] = emitter.memrefSpaces[op.getSource()];
+//  int sourceRank = sourceType.getRank();
+//  if(emitter.isStridedSubview(op.getSource()))
+//  {
+//    return op.emitError("NOT SUPPORTED YET: strided subview of strided subview. Would need to figure out how to get extents correct");
+//  }
+//  //SubViewOp behavior
+//  //  - Sizes/Offsets are required
+//  //    - dynamic must take precedence over static, because sometimes both dynamic and static offsets are given but the static values are all -1.
+//  //  - Strides are optional - if neither static nor dynamic strides are given, assume they are all 1
+//  //  - Check the op.getDroppedDims() for a bit vector of which dimensions are kept (1) or discarded (0).
+//  //    - This works just like the Kokkos::subview arguments - kept dims are given as a [begin, end) interval, and discarded as a single index.
+//  emitter << "/* SubViewOp info\n";
+//  emitter << "Source (rank-" << sourceRank << "): ";
+//  if(failed(emitter.emitValue(op.getSource())))
+//    return failure();
+//  emitter << "\n";
+//  emitter << "Sizes (dynamic): ";
+//  for(auto s : op.getSizes())
+//  {
+//    (void) emitter.emitValue(s);
+//    emitter << "  ";
+//  }
+//  emitter << "\n";
+//  emitter << "Offsets (dynamic): ";
+//  for(auto o : op.getOffsets())
+//  {
+//    (void) emitter.emitValue(o);
+//    emitter << "  ";
+//  }
+//  emitter << "\n";
+//  emitter << "Strides (dynamic): ";
+//  for(auto s : op.getStrides())
+//  {
+//    (void) emitter.emitValue(s);
+//    emitter << "  ";
+//  }
+//  emitter << "\n";
+//  emitter << "Sizes (static): ";
+//  for(auto s : op.getStaticSizes())
+//  {
+//    emitter << s << "  ";
+//  }
+//  emitter << "\n";
+//  emitter << "Offsets (static): ";
+//  for(auto o : op.getStaticOffsets())
+//  {
+//    emitter << o << "  ";
+//  }
+//  emitter << "\n";
+//  emitter << "Strides (static): ";
+//  for(auto s : op.getStaticStrides())
+//  {
+//    emitter << s << "  ";
+//  }
+//  emitter << "\n";
+//  emitter << "Dropped Dims: ";
+//  for(size_t i = 0; i < op.getDroppedDims().size(); i++)
+//    emitter << op.getDroppedDims()[i] << " ";
+//  emitter << "\n*/\n";
+//  // TODO: what happens with sizes/staticSizes when a dimension is dropped?
+//  // Is the size for dropped dimension just 1, or is the length of sizes one element shorter per dropped dim?
+//  for(size_t i = 0; i < op.getDroppedDims().size(); i++)
+//  {
+//    if(op.getDroppedDims()[i])
+//      return op.emitError("Do not yet support dropped dimensions in SubViewOp, see TODO.");
+//  }
+//  bool useDynamicSizes = op.getSizes().size();
+//  bool useDynamicOffsets = op.getOffsets().size();
+//  // TODO: need to carefully implement subviews with non-unit strides,
+//  // since Kokkos::subview does not support this. Probably have to compute the strides per-dimension and then construct a LayoutStride object.
+//  bool haveStrides = false;
+//  if(op.getStrides().size())
+//  {
+//    //dynamic strides given, so they could be non-unit
+//    haveStrides = true;
+//  }
+//  for(auto staticStride : op.getStaticStrides())
+//  {
+//    if(staticStride != 1)
+//      haveStrides = true;
+//  }
+//  if(haveStrides)
+//    return op.emitError("Do not yet support non-unit strides in SubViewOp, see TODO.");
+//  auto emitSize = [&](int dim) -> LogicalResult
+//  {
+//    if(useDynamicSizes)
+//    {
+//      if(failed(emitter.emitValue(op.getSizes()[dim])))
+//        return failure();
+//    }
+//    else
+//      emitter << op.getStaticSizes()[dim];
+//    return success();
+//  };
+//  auto emitOffset = [&](int dim) -> LogicalResult
+//  {
+//    if(useDynamicOffsets)
+//    {
+//      if(failed(emitter.emitValue(op.getOffsets()[dim])))
+//        return failure();
+//    }
+//    else
+//      emitter << op.getStaticOffsets()[dim];
+//    return success();
+//  };
+//  emitter << "auto " << emitter.getOrCreateName(result) << " = Kokkos::subview(";
+//  if(failed(emitter.emitValue(op.getSource())))
+//    return failure();
+//  for(int dim = 0; dim < sourceRank; dim++)
+//  {
+//    emitter << ", Kokkos::make_pair<int64_t, int64_t>(";
+//    //interval for each dim is [offset, offset+size)
+//    //TODO: this is only correct for unit strides, see above
+//    if(failed(emitOffset(dim)))
+//      return failure();
+//    emitter << ", ";
+//    if(failed(emitOffset(dim)))
+//      return failure();
+//    emitter << " + ";
+//    if(failed(emitSize(dim)))
+//      return failure();
+//    emitter << ")";
+//  }
+//  emitter << ")";
+//  return success();
+//}
 
+/*
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::CollapseShapeOp op) {
   //CollapseShape flattens a subset of dimensions. The op semantics require that this can alias the existing data without copying/shuffling.
@@ -968,7 +946,9 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ".data())";
   return success();
 }
+*/
 
+/*
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::CastOp op) {
   auto space = emitter.memrefSpaces[op.getSource()];
@@ -1012,6 +992,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ")";
   return success();
 }
+*/
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     arith::ConstantOp constantOp) {
@@ -1069,72 +1050,6 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   return printConstantOp(emitter, operation, value);
 }
 
-/*
-static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    cf::BranchOp branchOp) {
-  raw_ostream &os = emitter.ostream();
-
-  for (auto pair :
-       llvm::zip(branchOp.getOperands(), successor.getArguments())) {
-    Value &operand = std::get<0>(pair);
-    BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = "
-       << emitter.getOrCreateName(operand) << ";\n";
-  }
-
-  os << "goto ";
-  if (!(emitter.hasBlockLabel(successor)))
-    return branchOp.emitOpError("unable to find label for successor block");
-  os << emitter.getOrCreateName(successor);
-  return success();
-}
-
-static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    cf::CondBranchOp condBranchOp) {
-  raw_indented_ostream &os = emitter.ostream();
-  Block &trueSuccessor = *condBranchOp.getTrueDest();
-  Block &falseSuccessor = *condBranchOp.getFalseDest();
-
-  os << "if (" << emitter.getOrCreateName(condBranchOp.getCondition())
-     << ") {\n";
-
-  os.indent();
-
-  // If condition is true.
-  for (auto pair : llvm::zip(condBranchOp.getTrueOperands(),
-                             trueSuccessor.getArguments())) {
-    Value &operand = std::get<0>(pair);
-    BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = "
-       << emitter.getOrCreateName(operand) << ";\n";
-  }
-
-  os << "goto ";
-  if (!(emitter.hasBlockLabel(trueSuccessor))) {
-    return condBranchOp.emitOpError("unable to find label for successor block");
-  }
-  os << emitter.getOrCreateName(trueSuccessor) << ";\n";
-  os.unindent() << "} else {\n";
-  os.indent();
-  // If condition is false.
-  for (auto pair : llvm::zip(condBranchOp.getFalseOperands(),
-                             falseSuccessor.getArguments())) {
-    Value &operand = std::get<0>(pair);
-    BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = "
-       << emitter.getOrCreateName(operand) << ";\n";
-  }
-
-  os << "goto ";
-  if (!(emitter.hasBlockLabel(falseSuccessor))) {
-    return condBranchOp.emitOpError()
-           << "unable to find label for successor block";
-  }
-  os << emitter.getOrCreateName(falseSuccessor) << ";\n";
-  os.unindent() << "}";
-  return success();
-}
-
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     cf::AssertOp op) {
   emitter << "if(!" << emitter.getOrCreateName(op.getArg()) << ") Kokkos::abort(";
@@ -1143,7 +1058,6 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ")";
   return success();
 }
-*/
 
 static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp callOp)
 {
@@ -1156,11 +1070,12 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   // Declare the result (if any) in current scope
   bool hasResult = callOp.getResults().size() == 1;
   bool resultIsMemref = hasResult && isa<MemRefType>(callOp.getResult(0).getType());
+  kokkos::MemorySpace resultSpace = kokkos::MemorySpace::Host;
   if (hasResult) {
     // Register the space of the result as being HostSpace now
-    emitter.memrefSpaces[callOp.getResult(0)] = MemSpace::Host;
     if (resultIsMemref) {
-      if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), MemSpace::Host)))
+      resultSpace = kokkos::getMemSpace(callOp.getResult(0));
+      if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), resultSpace)))
         return failure();
     } else {
       if(failed(emitter.emitType(callOp.getLoc(), callOp.getResult(0).getType(), false)))
@@ -1230,7 +1145,7 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   if(hasResult && resultIsMemref)
   {
     os << emitter.getOrCreateName(callOp.getResult(0)) << " = stridedMemrefToView<";
-    if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), MemSpace::Host)))
+    if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), resultSpace)))
       return failure();
     os << ">(" << emitter.getOrCreateName(callOp.getResult(0)) << "_smr);\n";
   }
@@ -1940,9 +1855,6 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
   bool isSupportFunc = emitter.isSparseSupportFunction(functionOp.getName());
   // Does the function provide its results via pointer arguments, preceding the input arguments?
   bool pointerResults = isSupportFunc && emitter.sparseSupportFunctionPointerResults(functionOp.getName());
-  // Is the function a kernel?
-  // Kernels expect device views, and so they do not have python wrappers.
-  bool isKernel = functionOp.getName().starts_with("kokkos_sparse_kernel_");
   std::string functionOpName;
   if(isSupportFunc) {
     functionOpName = emitter.getSparseSupportFunctionName(functionOp.getName());
@@ -2043,9 +1955,17 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
             }
             else
             {
-              // Emit non-sparse runtime (i.e. Kokkos::View<..> for MemRefType)
-              if (failed(emitter.emitType(functionOp.getLoc(), arg.getType())))
-                return failure();
+              // Emit normal types (e.g. Kokkos::View<..> or LazyDualView for MemRefType)
+              if (MemRefType mrt = dyn_cast<MemRefType>(arg.getType())) {
+                // Get the space based on how this argument gets used
+                kokkos::MemorySpace space = kokkos::getMemSpace(arg);
+                if (failed(emitter.emitMemrefType(functionOp.getLoc(), mrt, space)))
+                  return failure();
+              }
+              else {
+                if (failed(emitter.emitType(functionOp.getLoc(), arg.getType())))
+                  return failure();
+              }
             }
             os << " " << emitter.getOrCreateName(arg);
             // Suffix the names of StridedMemRefType parameters with _smr
@@ -2060,8 +1980,10 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
   //Convert any StridedMemRefType parameters to Kokkos::View
   for(BlockArgument arg : stridedMemrefParams)
   {
+    MemRefType mrt = cast<MemRefType>(arg.getType());
+    kokkos::MemorySpace space = kokkos::getMemSpace(arg);
     emitter << "auto " << emitter.getOrCreateName(arg) << " = stridedMemrefToView<";
-    if (failed(emitter.emitType(functionOp.getLoc(), arg.getType())))
+    if (failed(emitter.emitMemrefType(functionOp.getLoc(), mrt, space)))
       return failure();
     emitter << ">(*" << emitter.getOrCreateName(arg) << "_smr);\n";
   }
@@ -2108,7 +2030,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
   }
   os.unindent() << "}\n\n";
   // Finally, create the corresponding wrapper function that is callable from Python (if one is needed)
-  if(!emitter.emittingPython() || isKernel)
+  if(!emitter.emittingPython())
     return success();
   // Emit a wrapper function without Kokkos::View for Python to call
   os << "extern \"C\" void " << "py_" << functionOpName << '(';
@@ -2444,7 +2366,7 @@ KokkosCppEmitter::KokkosCppEmitter(raw_ostream& os, bool enableSparseSupport)
   valueInScopeCount.push(0);
   labelInScopeCount.push(0);
   if(enableSparseSupport)
-    populateSparseSupportFunctions();
+    registerRuntimeSupportFunctions();
 }
 
 KokkosCppEmitter::KokkosCppEmitter(raw_ostream& os, raw_ostream& py_os_, bool enableSparseSupport)
@@ -2453,12 +2375,16 @@ KokkosCppEmitter::KokkosCppEmitter(raw_ostream& os, raw_ostream& py_os_, bool en
   valueInScopeCount.push(0);
   labelInScopeCount.push(0);
   if(enableSparseSupport)
-    populateSparseSupportFunctions();
+    registerRuntimeSupportFunctions();
 }
 
-void KokkosCppEmitter::populateSparseSupportFunctions()
+void KokkosCppEmitter::registerRuntimeSupportFunctions()
 {
-  //Most sparse support functions are prefixed with _mlir_ciface_ in the library
+  // pointerResult is true for a function if it returns void,
+  // but produces a memref result through an output pointer argument.
+  //
+  // Most sparse support functions are prefixed with _mlir_ciface_ in the library,
+  // but a few do not have the prefix.
   auto registerCIface =
     [&](bool pointerResult, std::string name)
     {
@@ -2469,10 +2395,9 @@ void KokkosCppEmitter::populateSparseSupportFunctions()
     {
       sparseSupportFunctions.insert({name, {pointerResult, name}});
     };
-  registerCIface(false, "newSparseTensor");
+  // SparseTensor functions
   for (std::string funcName :
-       {"getPartitions",       "mpi_getPartitions",   "updateSlice",
-        "mpi_setSlice",        "sparseCoordinates0",  "sparseCoordinates8",
+       {"sparseCoordinates0",  "sparseCoordinates8",
         "sparseCoordinates16", "sparseCoordinates32", "sparseCoordinates64",
         "sparsePositions0",    "sparsePositions8",    "sparsePositions16",
         "sparsePositions32",   "sparsePositions64",   "sparseValuesBF16",
@@ -2482,26 +2407,28 @@ void KokkosCppEmitter::populateSparseSupportFunctions()
     registerCIface(true, funcName);
   }
   for (std::string funcName :
+      { "newSparseTensor", "lexInsertI8", "lexInsertI16", "lexInsertI32",
+      "lexInsertI64", "lexInsertF32", "lexInsertF64",
+      "expInsertF32", "expInsertF64", "expInsertI8",
+      "expInsertI16", "expInsertI32", "expInsertI64"
+      }) {
+    registerCIface(false, funcName);
+  }
+  // SparseTensor functions not prefixed with "_mlir_ciface_"
+  for (std::string funcName :
+      {"endInsert", "sparseDimSize", "sparseLvlSize"}) {
+    registerNonPrefixed(false, funcName);
+  }
+  // PartTensor functions
+  for (std::string funcName :
        {"mpi_getActiveMask", "getSlice", "mpi_getSlice",
         "mpi_getSliceForActiveMask", "krs_getRank", "mpi_getRank"}) {
     registerCIface(false, funcName);
   }
-  registerCIface(false, "lexInsertI8");
-  registerCIface(false, "lexInsertI16");
-  registerCIface(false, "lexInsertI32");
-  registerCIface(false, "lexInsertI64");
-  registerCIface(false, "lexInsertF32");
-  registerCIface(false, "lexInsertF64");
-  registerCIface(false, "expInsertF32");
-  registerCIface(false, "expInsertF64");
-  registerCIface(false, "expInsertI8");
-  registerCIface(false, "expInsertI16");
-  registerCIface(false, "expInsertI32");
-  registerCIface(false, "expInsertI64");
-  // Now the functions _not_ prefixed with _mlir_ciface_
-  registerNonPrefixed(false, "endInsert");
-  registerNonPrefixed(false, "sparseDimSize");
-  registerNonPrefixed(false, "sparseLvlSize");
+  for (std::string funcName :
+       {"getPartitions",       "mpi_getPartitions",   "updateSlice", "mpi_setSlice"}) {
+    registerCIface(true, funcName);
+  }
 }
 
 /// Return the existing or a new name for a Value.
@@ -2509,6 +2436,11 @@ StringRef KokkosCppEmitter::getOrCreateName(Value val) {
   if (!valueMapper.count(val))
     valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
   return *valueMapper.begin(val);
+}
+
+void KokkosCppEmitter::assignName(StringRef name, Value val) {
+  if (!valueMapper.count(val))
+    valueMapper.insert(val, std::string(name));
 }
 
 /// Return the existing or a new label for a Block.
@@ -3225,8 +3157,8 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
           .Case<func::FuncOp, ModuleOp>(
               [&](auto op) { return printOperation(*this, op, kokkosParallelEnv); })
           // CF ops.
-          .Case<cf::BranchOp, cf::CondBranchOp, cf::AssertOp>(
-              [&](auto op) { /* Do nothing */ return success(); })
+          .Case<cf::AssertOp>(
+              [&](auto op) { return printOperation(*this, op); })
           // Func ops.
           .Case<func::CallOp, func::ConstantOp, func::ReturnOp>(
               [&](auto op) { return printOperation(*this, op); })
@@ -3265,12 +3197,9 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
           // Memref ops.
           .Case<memref::GlobalOp, memref::GetGlobalOp, memref::AllocOp,
                 memref::AllocaOp, memref::StoreOp, memref::LoadOp,
-                memref::CopyOp, memref::SubViewOp, memref::CollapseShapeOp,
-                memref::CastOp, memref::DeallocOp, memref::DimOp,
-                memref::ReinterpretCastOp>(
-              [&](auto op) { return printOperation(*this, op); })
-          // GPU ops.
-          .Case<gpu::AllocOp, gpu::DeallocOp, gpu::MemcpyOp>(
+                memref::CopyOp, /* memref::SubViewOp, memref::CollapseShapeOp,
+                memref::CastOp, */ memref::DeallocOp, memref::DimOp /*,
+                memref::ReinterpretCastOp*/>(
               [&](auto op) { return printOperation(*this, op); })
           // EmitC ops.
           .Case<emitc::CallOp>(
@@ -3413,6 +3342,8 @@ LogicalResult KokkosCppEmitter::emitType(Location loc, Type type, bool forSparse
   if (auto tType = type.dyn_cast<TupleType>())
     return emitTupleType(loc, tType.getTypes());
   if (auto mrType = type.dyn_cast<MemRefType>()) {
+    return emitError(loc, "cannot directly emit memref type without knowing memory space");
+    /*
     if (forSparseRuntime) {
       os << "StridedMemRefType<";
       if (failed(emitType(loc, mrType.getElementType())))
@@ -3423,9 +3354,11 @@ LogicalResult KokkosCppEmitter::emitType(Location loc, Type type, bool forSparse
       return emitMemrefType(loc, mrType, MemSpace::General);
     }
     return success();
+    */
   }
   if (auto mrType = type.dyn_cast<UnrankedMemRefType>()) {
-    return emitMemrefType(loc, mrType, MemSpace::General);
+    //return emitMemrefType(loc, mrType, MemSpace::General);
+    return emitError(loc, "cannot directly emit unranked memref type without knowing memory space");
   }
   if (auto mrType = type.dyn_cast<LLVM::LLVMPointerType>()) {
     if (failed(emitType(loc, mrType.getElementType())))
@@ -3448,31 +3381,67 @@ LogicalResult KokkosCppEmitter::emitTypes(Location loc, ArrayRef<Type> types, bo
   }
 }
 
-LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, MemRefType type, MemSpace space)
+LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, MemRefType type, kokkos::MemorySpace space)
 {
-  os << "Kokkos::View<";
-  if (failed(emitType(loc, type.getElementType())))
-    return failure();
-  for(auto extent : type.getShape()) {
-    if(type.hasStaticShape()) {
-        os << '[' << extent << ']';
+  if(space == kokkos::MemorySpace::DualView) {
+    os << "LazyDualView<";
+    if (failed(emitType(loc, type.getElementType())))
+      return failure();
+    for(auto extent : type.getShape()) {
+      if(type.hasStaticShape()) {
+          os << '[' << extent << ']';
+      }
+      else {
+          os << '*';
+      }
     }
-    else {
-        os << '*';
-    }
+    os << ", Kokkos::LayoutRight>";
   }
-  os << ", Kokkos::LayoutRight, " << memspaceToName(space) << ">";
+  else {
+    os << "Kokkos::View<";
+    if (failed(emitType(loc, type.getElementType())))
+      return failure();
+    for(auto extent : type.getShape()) {
+      if(type.hasStaticShape()) {
+          os << '[' << extent << ']';
+      }
+      else {
+          os << '*';
+      }
+    }
+    os << ", Kokkos::LayoutRight, ";
+    if(space == kokkos::MemorySpace::Device)
+      os << "Kokkos::DefaultExecutionSpace";
+    else
+      os << "Kokkos::DefaultHostExecutionSpace";
+    os << ">";
+  }
   return success();
 }
 
-LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, UnrankedMemRefType type, MemSpace space)
+/*
+LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, UnrankedMemRefType type, kokkos::MemorySpace space)
 {
-  os << "Kokkos::View<";
-  if (failed(emitType(loc, type.getElementType())))
-    return failure();
-  os << "*, " << memspaceToName(space) << ">";
+  if(space == kokkos::MemorySpace::DualView) {
+    os << "LazyDualView<";
+    if (failed(emitType(loc, type.getElementType())))
+      return failure();
+    os << "*>";
+  }
+  else {
+    os << "Kokkos::View<";
+    if (failed(emitType(loc, type.getElementType())))
+      return failure();
+    os << "*, ";
+    if(space == kokkos::MemorySpace::Device)
+      os << "Kokkos::DefaultExecutionSpace";
+    else
+      os << "Kokkos::DefaultHostExecutionSpace";
+    os << ">";
+  }
   return success();
 }
+*/
 
 LogicalResult KokkosCppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
   os << "std::tuple<";

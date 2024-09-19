@@ -31,33 +31,6 @@ using namespace mlir::kokkos;
 // Pipeline implementation.
 //===----------------------------------------------------------------------===//
 
-void mlir::kokkos::buildSparseKokkosCompiler(
-    OpPassManager &pm, const SparseCompilerOptions &options) {
-#ifdef ENABLE_PART_TENSOR
-  pm.addPass(createPartTensorConversionPass(options.partTensorBackend));
-#endif
-  pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
-  pm.addPass(createSparsificationAndBufferizationPass(
-      getBufferizationOptionsForSparsification(
-          options.testBufferizationAnalysisOnly),
-      options.sparsificationOptions(), options.sparseTensorConversionOptions(),
-      options.createSparseDeallocs, options.enableRuntimeLibrary,
-      options.enableBufferInitialization, options.vectorLength,
-      /*enableVLAVectorization=*/options.armSVE,
-      /*enableSIMDIndex32=*/options.force32BitVectorIndices));
-  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  pm.addNestedPass<func::FuncOp>(
-      mlir::bufferization::createFinalizingBufferizePass());
-  pm.addPass(createSparseKokkosCodegenPass());
-  pm.addNestedPass<func::FuncOp>(createConvertLinalgToLoopsPass());
-  pm.addNestedPass<func::FuncOp>(createConvertVectorToSCFPass());
-  pm.addNestedPass<func::FuncOp>(memref::createExpandReallocPass());
-  pm.addPass(memref::createExpandStridedMetadataPass());
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(createReconcileUnrealizedCastsPass());
-}
-
-/*
 // Not working yet: new Kokkos dialect based pipeline.
 void mlir::kokkos::buildSparseKokkosCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
@@ -83,14 +56,13 @@ void mlir::kokkos::buildSparseKokkosCompiler(
   // Lower SCF to Kokkos dialect
   pm.addPass(createParallelUnitStepPass());
   pm.addPass(createKokkosLoopMappingPass());
-  pm.addPass(createKokkosMemorySpaceAssignmentPass());
-  pm.addPass(createKokkosDualViewManagementPass());
+  //pm.addPass(createKokkosMemorySpaceAssignmentPass());
+  //pm.addPass(createKokkosDualViewManagementPass());
   pm.addPass(createReconcileUnrealizedCastsPass());
   // Apply CSE (common subexpression elimination) now, since the
   // output of this pipeline gets fed directly into the Kokkos C++ emitter.
   pm.addPass(createCSEPass());
 }
-*/
 
 //===----------------------------------------------------------------------===//
 // Pipeline registration.
