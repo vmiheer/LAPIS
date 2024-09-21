@@ -839,7 +839,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::CastOp op) {
   // CastOp can only convert between static and dynamic dimensions.
-  // For Kokkos views and LazyDualView, this has no real effects.
+  // For Kokkos views and LapisDualView, this has no real effects.
   emitter.assignName(emitter.getOrCreateName(op.getOperand()), op.getResult());
   return success();
 }
@@ -1239,6 +1239,12 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::RangePara
       else
         emitter << "Kokkos::ThreadVectorRange";
       break;
+  }
+  if(op.getParallelLevel() == kokkos::ParallelLevel::RangePolicy) {
+    emitter << "<";
+    if(op.getExecutionSpace() == kokkos::ExecutionSpace::Host)
+      emitter << "Kokkos::DefaultHostExecutionSpace";
+    emitter << ">";
   }
   emitter << "(";
   if(op.getParallelLevel() != kokkos::ParallelLevel::RangePolicy)
@@ -1822,7 +1828,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
             }
             else
             {
-              // Emit normal types (e.g. Kokkos::View<..> or LazyDualView for MemRefType)
+              // Emit normal types (e.g. Kokkos::View<..> or LapisDualView for MemRefType)
               if (MemRefType mrt = dyn_cast<MemRefType>(arg.getType())) {
                 // Get the space based on how this argument gets used
                 kokkos::MemorySpace space = kokkos::getMemSpace(arg);
@@ -3251,7 +3257,7 @@ LogicalResult KokkosCppEmitter::emitTypes(Location loc, ArrayRef<Type> types, bo
 LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, MemRefType type, kokkos::MemorySpace space)
 {
   if(space == kokkos::MemorySpace::DualView) {
-    os << "LazyDualView<";
+    os << "LapisDualView<";
     if (failed(emitType(loc, type.getElementType())))
       return failure();
     for(auto extent : type.getShape()) {
@@ -3289,7 +3295,7 @@ LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, MemRefType type, ko
 LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, UnrankedMemRefType type, kokkos::MemorySpace space)
 {
   if(space == kokkos::MemorySpace::DualView) {
-    os << "LazyDualView<";
+    os << "LapisDualView<";
     if (failed(emitType(loc, type.getElementType())))
       return failure();
     os << "*>";
@@ -3330,150 +3336,231 @@ inline void pauseForDebugger()
 
 static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapper, bool enableSparseSupport)
 {
-  emitter << "#include <Kokkos_Core.hpp>\n";
-  emitter << "#include <type_traits>\n";
-  emitter << "#include <cstdint>\n";
-  emitter << "#include <unistd.h>\n";
-  emitter << "using exec_space = Kokkos::DefaultExecutionSpace;\n\n";
-  if(enablePythonWrapper)
-  {
-    //Will later add definitions for these functions.
-    //They depend on what global constant memrefs get created
-    emitter << "extern \"C\" void lapis_initialize();\n";
-    emitter << "extern \"C\" void lapis_finalize();\n\n";
-  }
-  if(enableSparseSupport)
-  {
-    // This is the definition of the StridedMemRefType class, copied from mlir/include/mlir/ExecutionEngine/CRunnerUtils.h
-    emitter << "// If building a CPP driver, we can use the original StridedMemRefType class from MLIR,\n";
-    emitter << "// so do not redefine it here.\n";
-    emitter << "#ifndef PYTACO_CPP_DRIVER\n";
-    emitter << "template <typename T, int N>\n";
-    emitter << "struct StridedMemRefType {\n";
-    emitter << "  T *basePtr;\n";
-    emitter << "  T *data;\n";
-    emitter << "  int64_t offset;\n";
-    emitter << "  int64_t sizes[N];\n";
-    emitter << "  int64_t strides[N];\n";
-    emitter << "};\n";
-    emitter << "#endif\n";
-    emitter << "\n";
-    emitter << "// If building a CPP driver, need to provide a version of\n";
-    emitter << "// _mlir_ciface_newSparseTensor() that takes underlying integer types, not enum types like DimLevelType.\n";
-    emitter << "// The MLIR-Kokkos generated code doesn't know about the enum types at all.\n";
-    emitter << "#ifdef PYTACO_CPP_DRIVER\n";
-    emitter << "int8_t* _mlir_ciface_newSparseTensor(\n";
-    emitter << "  StridedMemRefType<index_type, 1> *dimSizesRef,\n";
-    emitter << "  StridedMemRefType<index_type, 1> *lvlSizesRef,\n";
-    emitter << "  StridedMemRefType<int8_t, 1> *lvlTypesRef,\n";
-    emitter << "  StridedMemRefType<index_type, 1> *lvl2dimRef,\n";
-    emitter << "  StridedMemRefType<index_type, 1> *dim2lvlRef, int ptrTp,\n";
-    emitter << "  int indTp, int valTp, int action, int8_t* ptr) {\n";
-    emitter << "    return (int8_t*) _mlir_ciface_newSparseTensor(dimSizesRef, lvlSizesRef,\n";
-    emitter << "      reinterpret_cast<StridedMemRefType<DimLevelType, 1>*>(lvlTypesRef),\n";
-    emitter << "      lvl2dimRef, dim2lvlRef, (OverheadType) ptrTp, (OverheadType) indTp,\n";
-    emitter << "      (PrimaryType) valTp, (Action) action, ptr);\n";
-    emitter << "  }\n";
-    emitter << "#endif\n\n";
-
-    // Define utility functions to convert between Kokkos views and sparse tensor runtime objects.
-    // This is View to StridedMemRefType. Supported for any input View type as long as it's in HostSpace.
-    emitter << "template<typename V>\n";
-    emitter << "StridedMemRefType<typename V::value_type, V::rank> viewToStridedMemref(const V& v)\n";
-    emitter << "{\n";
-    emitter << "  static_assert(std::is_same_v<typename V::memory_space, Kokkos::HostSpace> ||\n";
-    emitter << "                std::is_same_v<typename V::memory_space, Kokkos::AnonymousSpace>,\n";
-    emitter << "                \"Only Kokkos::Views in HostSpace can be converted to StridedMemRefType.\");\n";
-    emitter << "  StridedMemRefType<typename V::value_type, V::rank> smr;\n";
-    emitter << "  smr.basePtr = v.data();\n";
-    emitter << "  smr.data = v.data();\n";
-    emitter << "  smr.offset = 0;\n";
-    emitter << "  for(int i = 0; i < int(V::rank); i++)\n";
-    emitter << "  {\n";
-    emitter << "    smr.sizes[i] = v.extent(i);\n";
-    emitter << "    smr.strides[i] = v.stride(i);\n";
-    emitter << "  }\n";
-    emitter << "  return smr;\n";
-    emitter << "}\n\n";
-
-    // This is StridedMemRefType to View. Supported as long as View is in HostSpace, and smr's strides are compatible with V's layout.
-    // - If V is LayoutStride, then smr's strides can be anything
-    // - If V is LayoutLeft, then smr.strides[0] must be 1, and smr.strides[k] must be smr.strides[k-1] * smr.sizes[k-1]
-    // - If V is LayoutRight, then smr.strides[rank - 1] must be 1, and smr.strides[k] must be smr.strides[k+1] * smr.sizes[k+1]
-    //
-    // TODO: have a performant (NDEBUG?) mode that disables runtime checks
-    emitter << "template<typename V>\n";
-    emitter << "V stridedMemrefToView(const StridedMemRefType<typename V::value_type, V::rank>& smr)\n";
-    emitter << "{\n";
-    emitter << "  using Layout = typename V::array_layout;\n";
-    emitter << "  static_assert(std::is_same_v<typename V::memory_space, Kokkos::HostSpace> ||\n";
-    emitter << "                std::is_same_v<typename V::memory_space, Kokkos::AnonymousSpace>,\n";
-    emitter << "                \"Can only convert a StridedMemRefType to a Kokkos::View in HostSpace.\");\n";
-    emitter << "  if constexpr(std::is_same_v<Layout, Kokkos::LayoutStride>)\n";
-    emitter << "  {\n";
-    emitter << "    Layout layout(\n";
-    for(int i = 0; i < 8; i++)
-    {
-      emitter << "    (" << i << " < V::rank) ? smr.sizes[" << i << "] : 0U,\n";
-      emitter << "    (" << i << " < V::rank) ? smr.strides[" << i << "] : 0U";
-      if(i == 7)
-        emitter << ");\n";
-      else
-        emitter << ",\n";
-    }
-    emitter << "    return V(&smr.data[smr.offset], layout);\n";
-    emitter << "  }\n";
-    //Both contiguous layout types (Left and Right) are constructed from extents only
-    emitter << "  Layout layout(\n";
-    for(int i = 0; i < 8; i++)
-    {
-      emitter << "    (" << i << " < V::rank) ? smr.sizes[" << i << "] : 0U";
-      if(i == 7)
-        emitter << ");\n";
-      else
-        emitter << ",\n";
-    }
-    emitter << "  if constexpr(std::is_same_v<Layout, Kokkos::LayoutLeft>)\n";
-    emitter << "  {\n";
-    emitter << "    int64_t expectedStride = 1;\n";
-    emitter << "    for(int i = 0; i < int(V::rank); i++)\n";
-    emitter << "    {\n";
-    emitter << "      if(expectedStride != smr.strides[i])\n";
-    emitter << "        Kokkos::abort(\"Cannot convert non-contiguous StridedMemRefType to LayoutLeft Kokkos::View\");\n";
-    emitter << "      expectedStride *= smr.sizes[i];\n";
-    emitter << "    }\n";
-    emitter << "  }\n";
-    emitter << "  else if constexpr(std::is_same_v<Layout, Kokkos::LayoutRight>)\n";
-    emitter << "  {\n";
-    emitter << "    int64_t expectedStride = 1;\n";
-    emitter << "    for(int i = int(V::rank) - 1; i >= 0; i--)\n";
-    emitter << "    {\n";
-    emitter << "      if(expectedStride != smr.strides[i])\n";
-    emitter << "        Kokkos::abort(\"Cannot convert non-contiguous StridedMemRefType to LayoutRight Kokkos::View\");\n";
-    emitter << "      expectedStride *= smr.sizes[i];\n";
-    emitter << "    }\n";
-    emitter << "  }\n";
-    emitter << "  return V(&smr.data[smr.offset], layout);\n";
-    emitter << "}\n\n";
-    emitter << "template<typename Vhost>\n";
-    emitter << "Kokkos::View<typename Vhost::data_type, typename Vhost::array_layout, exec_space> createDeviceMirror(const Vhost& v)\n";
-    emitter << "{\n";
-    emitter << "  return Kokkos::create_mirror_view(Kokkos::WithoutInitializing, typename exec_space::memory_space(), v);\n";
-    emitter << "}\n\n";
-    emitter << "template<typename Vdev, typename Vhost>\n";
-    emitter << "void destroyDeviceMirror(Vdev& vmirror, const Vhost& v)\n";
-    emitter << "{\n";
-    emitter << "  if(vmirror.data() != v.data())\n";
-    emitter << "  {\n";
-    emitter << "    vmirror = Vdev();\n";
-    emitter << "  }\n";
-    emitter << "}\n\n";
-    emitter << "template<typename Vdst, typename Vsrc>\n";
-    emitter << "void asyncDeepCopy(const Vdst& dst, const Vsrc& src)\n";
-    emitter << "{\n";
-    emitter << "  Kokkos::deep_copy(exec_space(), dst, src);\n";
-    emitter << "}\n\n";
-  }
+  // ** Do not edit this string directly **
+  // Instead edit LAPISSupport.hpp and pipe into CppToString.py
+  // to add escape characters so it can be pasted here.
+  emitter <<
+    "#include <Kokkos_Core.hpp>\n"
+    "#include <type_traits>\n"
+    "#include <cstdint>\n"
+    "#include <unistd.h>\n"
+    "\n"
+    "// If building a CPP driver, we can use the original StridedMemRefType class from MLIR,\n"
+    "// so do not redefine it here.\n"
+    "#ifndef PYTACO_CPP_DRIVER\n"
+    "template <typename T, int N>\n"
+    "struct StridedMemRefType {\n"
+    "  T *basePtr;\n"
+    "  T *data;\n"
+    "  int64_t offset;\n"
+    "  int64_t sizes[N];\n"
+    "  int64_t strides[N];\n"
+    "};\n"
+    "#endif\n"
+    "\n"
+    "// If building a CPP driver, need to provide a version of\n"
+    "// _mlir_ciface_newSparseTensor() that takes underlying integer types, not enum types like DimLevelType.\n"
+    "// The MLIR-Kokkos generated code doesn\'t know about the enum types at all.\n"
+    "#ifdef PYTACO_CPP_DRIVER\n"
+    "int8_t* _mlir_ciface_newSparseTensor(\n"
+    "  StridedMemRefType<index_type, 1> *dimSizesRef,\n"
+    "  StridedMemRefType<index_type, 1> *lvlSizesRef,\n"
+    "  StridedMemRefType<int8_t, 1> *lvlTypesRef,\n"
+    "  StridedMemRefType<index_type, 1> *lvl2dimRef,\n"
+    "  StridedMemRefType<index_type, 1> *dim2lvlRef, int ptrTp,\n"
+    "  int indTp, int valTp, int action, int8_t* ptr) {\n"
+    "    return (int8_t*) _mlir_ciface_newSparseTensor(dimSizesRef, lvlSizesRef,\n"
+    "      reinterpret_cast<StridedMemRefType<DimLevelType, 1>*>(lvlTypesRef),\n"
+    "      lvl2dimRef, dim2lvlRef, (OverheadType) ptrTp, (OverheadType) indTp,\n"
+    "      (PrimaryType) valTp, (Action) action, ptr);\n"
+    "  }\n"
+    "#endif\n"
+    "\n"
+    "template<typename V>\n"
+    "StridedMemRefType<typename V::value_type, V::rank> viewToStridedMemref(const V& v)\n"
+    "{\n"
+    "  StridedMemRefType<typename V::value_type, V::rank> smr;\n"
+    "  smr.basePtr = v.data();\n"
+    "  smr.data = v.data();\n"
+    "  smr.offset = 0;\n"
+    "  for(int i = 0; i < int(V::rank); i++)\n"
+    "  {\n"
+    "    smr.sizes[i] = v.extent(i);\n"
+    "    smr.strides[i] = v.stride(i);\n"
+    "  }\n"
+    "  return smr;\n"
+    "}\n"
+    "\n"
+    "template<typename V>\n"
+    "V stridedMemrefToView(const StridedMemRefType<typename V::value_type, V::rank>& smr)\n"
+    "{\n"
+    "  using Layout = typename V::array_layout;\n"
+    "  static_assert(std::is_same_v<typename V::memory_space, Kokkos::HostSpace> ||\n"
+    "                std::is_same_v<typename V::memory_space, Kokkos::AnonymousSpace>,\n"
+    "                \"Can only convert a StridedMemRefType to a Kokkos::View in HostSpace.\");\n"
+    "  if constexpr(std::is_same_v<Layout, Kokkos::LayoutStride>)\n"
+    "  {\n"
+    "    Layout layout(\n"
+    "    (0 < V::rank) ? smr.sizes[0] : 0U,\n"
+    "    (0 < V::rank) ? smr.strides[0] : 0U,\n"
+    "    (1 < V::rank) ? smr.sizes[1] : 0U,\n"
+    "    (1 < V::rank) ? smr.strides[1] : 0U,\n"
+    "    (2 < V::rank) ? smr.sizes[2] : 0U,\n"
+    "    (2 < V::rank) ? smr.strides[2] : 0U,\n"
+    "    (3 < V::rank) ? smr.sizes[3] : 0U,\n"
+    "    (3 < V::rank) ? smr.strides[3] : 0U,\n"
+    "    (4 < V::rank) ? smr.sizes[4] : 0U,\n"
+    "    (4 < V::rank) ? smr.strides[4] : 0U,\n"
+    "    (5 < V::rank) ? smr.sizes[5] : 0U,\n"
+    "    (5 < V::rank) ? smr.strides[5] : 0U,\n"
+    "    (6 < V::rank) ? smr.sizes[6] : 0U,\n"
+    "    (6 < V::rank) ? smr.strides[6] : 0U,\n"
+    "    (7 < V::rank) ? smr.sizes[7] : 0U,\n"
+    "    (7 < V::rank) ? smr.strides[7] : 0U);\n"
+    "    return V(&smr.data[smr.offset], layout);\n"
+    "  }\n"
+    "  Layout layout(\n"
+    "    (0 < V::rank) ? smr.sizes[0] : 0U,\n"
+    "    (1 < V::rank) ? smr.sizes[1] : 0U,\n"
+    "    (2 < V::rank) ? smr.sizes[2] : 0U,\n"
+    "    (3 < V::rank) ? smr.sizes[3] : 0U,\n"
+    "    (4 < V::rank) ? smr.sizes[4] : 0U,\n"
+    "    (5 < V::rank) ? smr.sizes[5] : 0U,\n"
+    "    (6 < V::rank) ? smr.sizes[6] : 0U,\n"
+    "    (7 < V::rank) ? smr.sizes[7] : 0U);\n"
+    "  if constexpr(std::is_same_v<Layout, Kokkos::LayoutLeft>)\n"
+    "  {\n"
+    "    int64_t expectedStride = 1;\n"
+    "    for(int i = 0; i < int(V::rank); i++)\n"
+    "    {\n"
+    "      if(expectedStride != smr.strides[i])\n"
+    "        Kokkos::abort(\"Cannot convert non-contiguous StridedMemRefType to LayoutLeft Kokkos::View\");\n"
+    "      expectedStride *= smr.sizes[i];\n"
+    "    }\n"
+    "  }\n"
+    "  else if constexpr(std::is_same_v<Layout, Kokkos::LayoutRight>)\n"
+    "  {\n"
+    "    int64_t expectedStride = 1;\n"
+    "    for(int i = int(V::rank) - 1; i >= 0; i--)\n"
+    "    {\n"
+    "      if(expectedStride != smr.strides[i])\n"
+    "        Kokkos::abort(\"Cannot convert non-contiguous StridedMemRefType to LayoutRight Kokkos::View\");\n"
+    "      expectedStride *= smr.sizes[i];\n"
+    "    }\n"
+    "  }\n"
+    "  return V(&smr.data[smr.offset], layout);\n"
+    "}\n"
+    "\n"
+    "struct LapisDualViewBase\n"
+    "{\n"
+    "  virtual void syncHost();\n"
+    "  virtual void syncDevice();\n"
+    "  bool modified_host = false;\n"
+    "  bool modified_device = false;\n"
+    "};\n"
+    "\n"
+    "template<typename DataType, typename Layout>\n"
+    "struct LapisDualView : public LapisDualViewBase\n"
+    "{\n"
+    "  static constexpr bool deviceAccessesHost = Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename DeviceView::memory_space>::accessible;\n"
+    "  static constexpr bool hostAccessesDevice = Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename DeviceView::memory_space>::accessible;\n"
+    "\n"
+    "  using DeviceView = Kokkos::View<DataType, Layout, Kokkos::DefaultExecutionSpace>;\n"
+    "  using HostView = Kokkos::View<DataType, Layout, Kokkos::DefaultHostExecutionSpace>;\n"
+    "\n"
+    "  // Constructor for allocating a new view.\n"
+    "  // Does not actually allocate anything yet; instead \n"
+    "  LapisDualView(\n"
+    "      const std::string& label,\n"
+    "      size_t ex0 = KOKKOS_INVALID_INDEX, size_t ex1 = KOKKOS_INVALID_INDEX, size_t ex2 = KOKKOS_INVALID_INDEX, size_t ex3 = KOKKOS_INVALID_INDEX,\n"
+    "      size_t ex4 = KOKKOS_INVALID_INDEX, size_t ex5 = KOKKOS_INVALID_INDEX, size_t ex6 = KOKKOS_INVALID_INDEX, size_t ex7 = KOKKOS_INVALID_INDEX)\n"
+    "  {\n"
+    "    device_view = DeviceView(label + \"_dev\", ex0, ex1, ex2, ex3, ex4, ex5, ex6, ex7);\n"
+    "    if constexpr(useSingleView) {\n"
+    "      // Host exec can access default memory space, so only allocate one view.\n"
+    "      host_view = HostView(device_view.data(), ex0, ex1, ex2, ex3, ex4, ex5, ex6, ex7);\n"
+    "    }\n"
+    "    else {\n"
+    "      // Otherwise, host_view must be a separate allocation.\n"
+    "      host_view = HostView(label + \"_host\", ex0, ex1, ex2, ex3, ex4, ex5, ex6, ex7);\n"
+    "    }\n"
+    "    parent = this;\n"
+    "  }\n"
+    "\n"
+    "  // Constructor which is given explicit device and host views, and a parent.\n"
+    "  // This can be used for subviewing/casting operations.\n"
+    "  LapisDualView(DeviceView d, HostView h, LapisDualViewBase* parent_)\n"
+    "    : device_view(d), host_view(h), parent(parent_)\n"
+    "  {}\n"
+    "\n"
+    "  // Constructor for a host view from an external source (e.g. python)\n"
+    "  LapisDualView(HostView h)\n"
+    "  {\n"
+    "    modified_host = true;\n"
+    "    if constexpr(useSingleView)\n"
+    "      device_view = DeviceView(h.data(), h.layout());\n"
+    "    else\n"
+    "\n"
+    "    host_view = h;\n"
+    "    parent = this;\n"
+    "  }\n"
+    "\n"
+    "  void modifyHost()\n"
+    "  {\n"
+    "    parent->modified_host = true;\n"
+    "  }\n"
+    "\n"
+    "  void modifyDevice()\n"
+    "  {\n"
+    "    parent->modified_device = true;\n"
+    "  }\n"
+    "\n"
+    "  void syncHost() override\n"
+    "  {\n"
+    "    if constexpr(useSingleView) {\n"
+    "      Kokkos::fence();\n"
+    "    }\n"
+    "    else {\n"
+    "      if(parent == this) {\n"
+    "        Kokkos::deep_copy(host_view, device_view);\n"
+    "        modified_device = false;\n"
+    "      }\n"
+    "      else {\n"
+    "        parent->syncHost();\n"
+    "      }\n"
+    "    }\n"
+    "  }\n"
+    "\n"
+    "  void syncDevice() override\n"
+    "  {\n"
+    "    // For single view, do not sync because\n"
+    "    // all host execution spaces are already synchronous\n"
+    "    if constexpr(!useSingleView) {\n"
+    "      if(parent == this) {\n"
+    "        Kokkos::deep_copy(device_view, host_view);\n"
+    "        modified_host = false;\n"
+    "      }\n"
+    "      else {\n"
+    "        parent->syncHost();\n"
+    "      }\n"
+    "    }\n"
+    "  }\n"
+    "\n"
+    "  DeviceView device_view;\n"
+    "  HostView host_view;\n"
+    "  LapisDualViewBase* parent;\n"
+    "};\n"
+    "\n"
+    "extern \"C\" void lapis_initialize()\n"
+    "{\n"
+    "  if (!Kokkos::is_initialized()) Kokkos::initialize();\n"
+    "}\n"
+    "\n"
+    "extern \"C\" void lapis_finalize()\n"
+    "{\n"
+    "  Kokkos::finalize();\n"
+    "}\n"
+    "\n";
 }
 
 //Version for when we are just emitting C++
