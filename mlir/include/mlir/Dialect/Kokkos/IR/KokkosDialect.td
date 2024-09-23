@@ -102,6 +102,11 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
     }
     unsigned getNumLoops() { return getUpperBound().size(); }
     unsigned getNumReductions() { return getNumResults(); }
+
+    // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
+    // NOTE: in future LLVM, scf.parallel can support multiple reductions but there will still be only one
+    // scf.reduce op per loop, which updates them all. kokkos.update_reduction will work the same way.
+    kokkos::UpdateReductionOp getReduction();
   }];
 
   let hasCanonicalizer = 0;
@@ -144,6 +149,9 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
     Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
     Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }
     Value getTeamRank() { return getLoopBody().front().getArguments()[4]; }
+
+    // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
+    kokkos::UpdateReductionOp getReduction();
   }];
 
   let hasCanonicalizer = 0;
@@ -186,6 +194,9 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
   let extraClassDeclaration = [{
     unsigned getNumReductions() { return getInitVals().size(); }
     Value getInductionVar() { return getLoopBody().front().getArguments()[0]; }
+
+    // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
+    kokkos::UpdateReductionOp getReduction();
   }];
 
   let hasCanonicalizer = 0;

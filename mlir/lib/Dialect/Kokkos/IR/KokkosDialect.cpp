@@ -189,6 +189,19 @@ LogicalResult RangeParallelOp::verify() {
   return success();
 }
 
+kokkos::UpdateReductionOp RangeParallelOp::getReduction()
+{
+  Region& body = this->getLoopBody();
+  for(kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
+    return op;
+  for(kokkos::SingleOp single : body.getOps<kokkos::SingleOp>())
+  {
+    for(kokkos::UpdateReductionOp op : single.getRegion().getOps<kokkos::UpdateReductionOp>())
+      return op;
+  }
+  return nullptr;
+}
+
 // ****************** //
 //   TeamParallelOp   //
 // ****************** //
@@ -354,6 +367,19 @@ LogicalResult TeamParallelOp::verify() {
 }
 */
 
+kokkos::UpdateReductionOp TeamParallelOp::getReduction()
+{
+  Region& body = this->getLoopBody();
+  for(kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
+    return op;
+  for(kokkos::SingleOp single : body.getOps<kokkos::SingleOp>())
+  {
+    for(kokkos::UpdateReductionOp op : single.getRegion().getOps<kokkos::UpdateReductionOp>())
+      return op;
+  }
+  return nullptr;
+}
+
 // ******************** //
 //   ThreadParallelOp   //
 // ******************** //
@@ -384,6 +410,23 @@ void ThreadParallelOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorI
   regions.push_back(RegionSuccessor());
 }
 
+kokkos::UpdateReductionOp ThreadParallelOp::getReduction()
+{
+  Region& body = this->getLoopBody();
+  for(kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
+    return op;
+  for(kokkos::SingleOp single : body.getOps<kokkos::SingleOp>())
+  {
+    for(kokkos::UpdateReductionOp op : single.getRegion().getOps<kokkos::UpdateReductionOp>())
+      return op;
+  }
+  return nullptr;
+}
+
+// ********* //
+//  SingleOp //
+// ********* //
+
 LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location,
     SingleOp::Adaptor adaptor, SmallVectorImpl<Type> &inferredReturnTypes) {
@@ -393,6 +436,10 @@ LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
     inferredReturnTypes.push_back(arg.getType());
   return success();
 }
+
+// ******************** //
+//  UpdateReductionOp   //
+// ******************** //
 
 void UpdateReductionOp::build(
     OpBuilder &builder, OperationState &result, Value update, Value identity,
@@ -510,6 +557,21 @@ MemorySpace getMemSpace(Value v)
     else
       return MemorySpace::Device;
   }
+}
+
+// Get the parallel nesting depth of the given Op
+// - If Op itself is a kokkos.parallel or scf.parallel, then that counts as 1
+// - Otherwise, Op counts for 0
+// - Each enclosing parallel counts for 1 more
+int getOpParallelDepth(Operation *op) {
+  int depth = 0;
+  if (isa<scf::ParallelOp, kokkos::RangeParallelOp, kokkos::TeamParallelOp, kokkos::ThreadParallelOp>(op))
+    depth++;
+  Operation *parent = op->getParentOp();
+  if (parent)
+    return depth + getOpParallelDepth(parent);
+  // op has no parent
+  return depth;
 }
 }
 

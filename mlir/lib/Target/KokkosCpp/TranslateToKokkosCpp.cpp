@@ -144,6 +144,9 @@ struct KokkosCppEmitter {
   /// Return the name of a previously declared Value, or a literal constant.
   LogicalResult emitValue(Value val);
 
+  /// Get a new unique identifier that won't conflict with any other variable names.
+  std::string getUniqueIdentifier();
+
   /// Return the existing or a new name for a Value.
   StringRef getOrCreateName(Value val);
 
@@ -822,7 +825,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::CastOp op) {
   // CastOp can only convert between static and dynamic dimensions.
-  // For Kokkos views and LapisDualView, this has no real effects.
+  // For Kokkos views and LAPIS::DualView, this has no real effects.
   emitter.assignName(emitter.getOrCreateName(op.getOperand()), op.getResult());
   return success();
 }
@@ -1180,6 +1183,87 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, scf::ConditionOp 
   return success();
 }
 
+// If the join represented by op is a built-in reducer in Kokkos, return true and set reduction to its
+// name in C++ (e.g. "Kokkos:Min"). Otherwise return false.
+static bool isBuiltinReduction(std::string& reduction, kokkos::UpdateReductionOp op) {
+  // Built-in joins should have only two ops in the body: a binary arithmetic op of the two arguments, and a yield of that result.
+  // Note: all Kokkos built in reductions have commutative joins, so here we test for both permutations of the arguments as operands.
+  //
+  // TODO! Check that op.getIdentity() matches the corresponding Kokkos reduction identity before returning true.
+  // However, this should already match in all cases.
+  Region& body = op.getReductionOperator();
+  auto bodyArgs = body.getArguments();
+  if(bodyArgs.size() != 2)
+    return false;
+  Value arg1 = bodyArgs[0];
+  Value arg2 = bodyArgs[1];
+  SmallVector<Operation*> bodyOps;
+  for(Operation& op : body.getOps()) {
+    bodyOps.push_back(&op);
+    if(bodyOps.size() > 2)
+      return false;
+  }
+  Operation* op1 = bodyOps[0];
+  Operation* op2 = bodyOps[1];
+  if(op1->getNumOperands() != 2 || op1->getNumResults() != 1)
+    return false;
+  // Is the second op a yield of the first op's result?
+  if(!isa<kokkos::YieldOp>(op2) || op1->getResults()[0] != op2->getOperands()[0])
+    return false;
+  // Does op1 take bodyArgs as its two operands?
+  if(!((op1->getOperands()[0] == arg1 && op1->getOperands()[1] == arg2)
+      || (op1->getOperands()[0] == arg2 && op1->getOperands()[1] == arg1))) {
+    return false;
+  }
+  Type type = op2->getOperands()[0].getType();
+  // Finally, if op1 has one of the supported types, return true.
+  if(isa<arith::AddFOp, arith::AddIOp>(op1)) {
+    reduction = "Kokkos::Sum";
+    return true;
+  }
+  else if(isa<arith::MulFOp, arith::MulIOp>(op1)) {
+    reduction = "Kokkos::Prod";
+    return true;
+  }
+  else if(isa<arith::AndIOp>(op1)) {
+    // Note: MLIR makes no distinction between logical and bitwise AND.
+    // AndIOp always behaves like a bitwise AND.
+    reduction = "Kokkos::BAnd";
+    return true;
+  }
+  else if(isa<arith::OrIOp>(op1)) {
+    // Note: MLIR makes no distinction between logical and bitwise OR.
+    // OrIOp always behaves like a bitwise OR.
+    reduction = "Kokkos::BOr";
+    return true;
+  }
+  // TODO for when LLVM gets updated. They have split arith.maxf into arith.maximumf and arith.maxnumf (same with minf)
+  // These have different behavior with respect to NaNs: maximumf(nan, a) = nan, but maxnumf(nan, a) = a.
+  // The latter is not what Kokkos::Max will do, so it would have to use a custom reducer.
+  //else if(isa<arith::MaximumFOp>(op1) {
+  else if(isa<arith::MaxFOp>(op1)) {
+    reduction = "Kokkos::Max";
+    return true;
+  }
+  else if(isa<arith::MinFOp>(op1)) {
+  //else if(isa<arith::MinimumFOp>(op1)) {
+    reduction = "Kokkos::Min";
+    return true;
+  }
+  // We can only use the Kokkos built-in for integer min/max if the signedness of the op matches the type.
+  // Otherwise, we have to emit a custom reducer that casts to the correct signedness before applying min/maxc.
+  else if((isa<arith::MaxSIOp>(op1) && type.isSignedInteger()) || (isa<arith::MaxUIOp>(op1) && type.isUnsignedInteger())) {
+    reduction = "Kokkos::Max";
+    return true;
+  }
+  else if((isa<arith::MinSIOp>(op1) && type.isSignedInteger()) || (isa<arith::MinUIOp>(op1) && type.isUnsignedInteger())) {
+    reduction = "Kokkos::Min";
+    return true;
+  }
+  // The reduction is some binary operation, but not one that Kokkos has as a built-in reducer.
+  return false;
+}
+
 static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::RangeParallelOp op) {
   // Declare any results (which can only be produced by reductions).
   // These don't need to be initialized.
@@ -1266,6 +1350,15 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::RangePara
       return failure();
     emitter << ' ' << emitter.getOrCreateName(iv);
   }
+  int depth = kokkos::getOpParallelDepth(op);
+  if(isReduction) {
+    for(Value result : op->getResults()) {
+      emitter << ", ";
+      if(failed(emitter.emitType(op.getLoc(), result.getType())))
+        return failure();
+      emitter << "& lreduce" << depth;
+    }
+  }
   emitter << ") {\n";
   // Emit body ops.
   emitter.ostream().indent();
@@ -1275,9 +1368,21 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::RangePara
   }
   emitter.ostream().unindent();
   emitter << "}";
-  // Pass in reduction arguments, if any
-  for(Value result : op->getResults())
-    emitter << ", " << emitter.getOrCreateName(result);
+  if(isReduction) {
+    // Determine what kind of reduction is being done, if any
+    kokkos::UpdateReductionOp reduction = op.getReduction();
+    if(!reduction)
+      return op.emitError("Could not find UpdateReductionOp inside parallel op with result(s)");
+    std::string kokkosReducer;
+    if(!isBuiltinReduction(kokkosReducer, reduction))
+      return op.emitError("Do not yet support non-builtin reducers");
+    Value result = op.getResults()[0];
+    // Pass in reducer arguments to parallel_reduce
+    emitter << ", " << kokkosReducer << "<";
+    if(failed(emitter.emitType(op.getLoc(), result.getType())))
+      return failure();
+    emitter << ">(" << emitter.getOrCreateName(result) << ")";
+  }
   emitter << ")";
   return success();
 }
@@ -1287,6 +1392,86 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::TeamParal
 }
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::ThreadParallelOp op) {
+  // Declare any results (which can only be produced by reductions).
+  // These don't need to be initialized.
+  bool isReduction = op.getNumReductions();
+  for(Value result : op->getResults())
+  {
+    if(failed(emitter.emitType(op.getLoc(), result.getType())))
+      return failure();
+    emitter << ' ' << emitter.getOrCreateName(result) << ";\n";
+  }
+  std::string lambda = "lambda_" + emitter.getUniqueIdentifier();
+  // First, declare the lambda.
+  emitter << "auto " << lambda << " = \n";
+  emitter << "KOKKOS_LAMBDA(const LAPIS::TeamMem& t";
+  if(isReduction) {
+    if(op->getNumResults() > 1)
+      return op.emitError("Currently, can only handle 1 reducer per parallel");
+    for(Value result : op->getResults()) {
+      emitter << ", ";
+      if(failed(emitter.emitType(op.getLoc(), result.getType())))
+        return failure();
+      emitter << "& lreduce0";
+    }
+  }
+  emitter << ") {\n";
+  // Compute the outer induction variable in terms of league rank, team rank and team size.
+  emitter << "  size_t induction = t.league_rank() * t.team_size() + t.team_rank();\n";
+  // And exit immediately if this thread has nothing to do.
+  // This is OK because ThreadParallel can't contain any team-wide synchronization.
+  emitter << "  if(induction >= " << emitter.getOrCreateName(op.getNumIters()) << ") return;\n";
+  emitter.assignName("induction", op.getInductionVar());
+  // Emit body ops.
+  emitter.ostream().indent();
+  for(Operation& bodyOp : op.getRegion().getOps()) {
+    if(failed(emitter.emitOperation(bodyOp, true)))
+      return failure();
+  }
+  emitter.ostream().unindent();
+  emitter << "};\n";
+  // Find the policy's vector length based on two runtime values: the hint operand to ThreadParallel,
+  // and the maximum vector length determined by Kokkos.
+  // If the hint value is 0, it means no hint was provided so arbitrarily use 8 as the target.
+  // TODO: is there a better choice for this?
+  std::string vectorLengthTarget = "targetVectorLength_" + emitter.getUniqueIdentifier();
+  emitter << "size_t " << vectorLengthTarget << " = " << emitter.getOrCreateName(op.getVectorLengthHint());
+  emitter << " ? " << emitter.getOrCreateName(op.getVectorLengthHint()) << " : 8;\n";
+  std::string vectorLength = "vectorLength_" + emitter.getUniqueIdentifier();
+  emitter << "size_t " << vectorLength << " = Kokkos::min(" << vectorLengthTarget << ", LAPIS::TeamPolicy::vector_length_max());\n";
+  // Since we have a lambda and a vector length, we can now query a temporary TeamPolicy for the best team size
+  std::string teamSize = "teamSize_" + emitter.getUniqueIdentifier();
+  emitter << "size_t " << teamSize << " = LAPIS::TeamPolicy(1, 1, " << vectorLength << ").team_size_recommended(" << lambda << ", ";
+  if(isReduction)
+    emitter << "Kokkos::ParallelReduceTag{}";
+  else
+    emitter << "Kokkos::ParallelForTag{}";
+  emitter << ");\n";
+  // Get league size from team size and number of outer iters op performs
+  std::string leagueSize = "leagueSize_" + emitter.getUniqueIdentifier();
+  emitter << "size_t " << leagueSize << " = (" << emitter.getOrCreateName(op.getNumIters()) << " + " << teamSize << " - 1) / " << teamSize << ";\n";
+  // Finally, launch the lambda with the correct policy.
+  if(isReduction)
+    emitter << "Kokkos::parallel_reduce";
+  else
+    emitter << "Kokkos::parallel_for";
+  emitter << "(LAPIS::TeamPolicy(" << leagueSize << ", " << teamSize << ", " << vectorLength << "), lambda";
+  if(isReduction) {
+    // Determine what kind of reduction is being done, if any
+    kokkos::UpdateReductionOp reduction = op.getReduction();
+    if(!reduction)
+      return op.emitError("Could not find UpdateReductionOp inside parallel op with result(s)");
+    std::string kokkosReducer;
+    if(!isBuiltinReduction(kokkosReducer, reduction))
+      return op.emitError("Do not yet support non-builtin reducers");
+    Value result = op.getResults()[0];
+    // Pass in reducer arguments to parallel_reduce
+    emitter << ", " << kokkosReducer << "<";
+    if(failed(emitter.emitType(op.getLoc(), result.getType())))
+      return failure();
+    emitter << ">(" << emitter.getOrCreateName(result) << ")";
+  }
+  emitter << ")";
   return success();
 }
 
@@ -1346,85 +1531,36 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::SingleOp 
   return success();
 }
 
-// If the join represented by op is a built-in reducer in Kokkos, return true and set reduction to its
-// name in C++ (e.g. "Kokkos:Min"). Otherwise return false.
-bool isBuiltinReduction(std::string& reduction, kokkos::UpdateReductionOp op) {
-  // Built-in joins should have only two ops in the body: a binary arithmetic op of the two arguments, and a yield of that result.
-  // Note: all Kokkos built in reductions have commutative joins, so here we test for both permutations of the arguments as operands.
-  Region& body = op.getReductionOperator();
-  auto bodyArgs = body.getArguments();
-  if(bodyArgs.size() != 2)
-    return false;
-  Value arg1 = bodyArgs[0];
-  Value arg2 = bodyArgs[1];
-  SmallVector<Operation*> bodyOps;
-  for(Operation& op : body.getOps()) {
-    bodyOps.push_back(&op);
-    if(bodyOps.size() > 2)
-      return false;
-  }
-  Operation* op1 = bodyOps[0];
-  Operation* op2 = bodyOps[1];
-  if(op1->getNumOperands() != 2 || op1->getNumResults() != 1)
-    return false;
-  // Is the second op a yield of the first op's result?
-  if(!isa<kokkos::YieldOp>(op2) || op1->getResults()[0] != op2->getOperands()[0])
-    return false;
-  // Does op1 take bodyArgs as its two operands?
-  if(!((op1->getOperands()[0] == arg1 && op1->getOperands()[1] == arg2)
-      || (op1->getOperands()[0] == arg2 && op1->getOperands()[1] == arg1))) {
-    return false;
-  }
-  Type type = op2->getOperands()[0].getType();
-  // Finally, if op1 has one of the supported types, return true.
-  if(isa<arith::AddFOp, arith::AddIOp>(op1)) {
-    reduction = "Kokkos::Sum";
-    return true;
-  }
-  else if(isa<arith::MulFOp, arith::MulIOp>(op1)) {
-    reduction = "Kokkos::Prod";
-    return true;
-  }
-  else if(isa<arith::AndIOp>(op1)) {
-    // Note: MLIR makes no distinction between logical and bitwise AND.
-    // AndIOp always behaves like a bitwise AND.
-    reduction = "Kokkos::BAnd";
-    return true;
-  }
-  else if(isa<arith::OrIOp>(op1)) {
-    // Note: MLIR makes no distinction between logical and bitwise OR.
-    // OrIOp always behaves like a bitwise OR.
-    reduction = "Kokkos::BOr";
-    return true;
-  }
-  //else if(isa<arith::MaxNumFOp, arith::MaximumFOp>(op1) {
-  else if(isa<arith::MaxFOp>(op1)) {
-    // NOTE: this is ignoring the distinction between MaxNum and Maximum for NaN handling:
-    // MaximumFOp(a, nan) = nan, but MaxNumFOp(a, nan) = a.
-    // We will just use the behavior of Kokkos::max, which is like MaximumFOp.
-    reduction = "Kokkos::Max";
-    return true;
-  }
-  else if(isa<arith::MinFOp>(op1)) {
-  //else if(isa<arith::MinNumFOp, arith::MinimumFOp>(op1)) {
-    reduction = "Kokkos::Min";
-    return true;
-  }
-  // We can only use the Kokkos built-in for integer if the signedness of the op matches the type.
-  else if((isa<arith::MaxSIOp>(op1) && type.isSignedInteger()) || (isa<arith::MaxUIOp>(op1) && type.isUnsignedInteger())) {
-    reduction = "Kokkos::Max";
-    return true;
-  }
-  else if((isa<arith::MinSIOp>(op1) && type.isSignedInteger()) || (isa<arith::MinUIOp>(op1) && type.isUnsignedInteger())) {
-    reduction = "Kokkos::Min";
-    return true;
-  }
-  // The reduction is some binary operation, but not one that Kokkos has as a built-in reducer.
-  return false;
-}
-
 static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::UpdateReductionOp op) {
-  auto& declOS = emitter.decl_ostream();
+  std::string kokkosReducer;
+  bool isBuiltin = isBuiltinReduction(kokkosReducer, op);
+  // TODO: for non-builtin reductions, declare a reducer type into declOS (with operator+ overloaded)
+  // and wrap result and partial reduction in that.
+  if(!isBuiltin)
+    return op.emitError("Currently, emitter can only handle reductions that are built-in to Kokkos");
+  //auto& declOS = emitter.decl_ostream();
+  // Get the depth of the enclosing parallel, which determines the name of the local reduction value
+  int depth = kokkos::getOpParallelDepth(op);
+  std::string partialReduction = std::string("lreduce") + std::to_string(depth);
+  Value contribute = op.getUpdate();
+  Region& body = op.getReductionOperator();
+  // Body has 2 arguments
+  Value arg1 = body.getArguments()[0];
+  Value arg2 = body.getArguments()[1];
+  // Within the body of op, replace arg1 with the name partialReduction
+  emitter.assignName(partialReduction, arg1);
+  // and arg2 with the name of the value to contribute
+  emitter.assignName(emitter.getOrCreateName(contribute), arg2);
+  // Now emit the ops of the body. When yield is encountered, just assign the operand to partialReduction.
+  for(Operation& bodyOp : body.getOps()) {
+    if(auto yield = dyn_cast<kokkos::YieldOp>(bodyOp)) {
+      emitter << partialReduction << " = " << emitter.getOrCreateName(bodyOp.getOperands()[0]) << ";\n";
+    }
+    else {
+      if(failed(emitter.emitOperation(bodyOp, true)))
+        return failure();
+    }
+  }
   return success();
 }
 
@@ -1889,7 +2025,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
             }
             else
             {
-              // Emit normal types (e.g. Kokkos::View<..> or LapisDualView for MemRefType)
+              // Emit normal types (e.g. Kokkos::View<..> or LAPIS::DualView for MemRefType)
               if (MemRefType mrt = dyn_cast<MemRefType>(arg.getType())) {
                 // Get the space based on how this argument gets used
                 kokkos::MemorySpace space = kokkos::getMemSpace(arg);
@@ -2363,6 +2499,11 @@ void KokkosCppEmitter::registerRuntimeSupportFunctions()
        {"getPartitions",       "mpi_getPartitions",   "updateSlice", "mpi_setSlice"}) {
     registerCIface(true, funcName);
   }
+}
+
+std::string KokkosCppEmitter::getUniqueIdentifier()
+{
+  return std::string("v") + std::to_string(++valueInScopeCount.top());
 }
 
 /// Return the existing or a new name for a Value.
@@ -3081,7 +3222,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   // Some ops need to be processed by the emitter, but don't print anything to the C++ code.
   // Avoid printing the semicolon in this case.
-  if(isa<arith::ConstantOp>(&op) || isa<memref::CastOp>(&op) || isa<memref::GetGlobalOp>(&op)) {
+  if(isa<arith::ConstantOp, memref::CastOp, memref::GetGlobalOp, kokkos::YieldOp>(&op)) {
     trailingSemicolon = false;
   }
   //os << "// " << op.getName() << '\n';
@@ -3318,7 +3459,7 @@ LogicalResult KokkosCppEmitter::emitTypes(Location loc, ArrayRef<Type> types, bo
 LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, MemRefType type, kokkos::MemorySpace space)
 {
   if(space == kokkos::MemorySpace::DualView) {
-    os << "LapisDualView<";
+    os << "LAPIS::DualView<";
     if (failed(emitType(loc, type.getElementType())))
       return failure();
     for(auto extent : type.getShape()) {
@@ -3356,7 +3497,7 @@ LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, MemRefType type, ko
 LogicalResult KokkosCppEmitter::emitMemrefType(Location loc, UnrankedMemRefType type, kokkos::MemorySpace space)
 {
   if(space == kokkos::MemorySpace::DualView) {
-    os << "LapisDualView<";
+    os << "LAPIS::DualView<";
     if (failed(emitType(loc, type.getElementType())))
       return failure();
     os << "*>";
@@ -3512,7 +3653,7 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
     "  return V(&smr.data[smr.offset], layout);\n"
     "}\n"
     "\n"
-    "struct LapisDualViewBase\n"
+    "struct LAPIS::DualViewBase\n"
     "{\n"
     "  virtual void syncHost();\n"
     "  virtual void syncDevice();\n"
@@ -3521,7 +3662,7 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
     "};\n"
     "\n"
     "template<typename DataType, typename Layout>\n"
-    "struct LapisDualView : public LapisDualViewBase\n"
+    "struct LAPIS::DualView : public LAPIS::DualViewBase\n"
     "{\n"
     "  static constexpr bool deviceAccessesHost = Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename DeviceView::memory_space>::accessible;\n"
     "  static constexpr bool hostAccessesDevice = Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename DeviceView::memory_space>::accessible;\n"
@@ -3531,7 +3672,7 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
     "\n"
     "  // Constructor for allocating a new view.\n"
     "  // Does not actually allocate anything yet; instead \n"
-    "  LapisDualView(\n"
+    "  LAPIS::DualView(\n"
     "      const std::string& label,\n"
     "      size_t ex0 = KOKKOS_INVALID_INDEX, size_t ex1 = KOKKOS_INVALID_INDEX, size_t ex2 = KOKKOS_INVALID_INDEX, size_t ex3 = KOKKOS_INVALID_INDEX,\n"
     "      size_t ex4 = KOKKOS_INVALID_INDEX, size_t ex5 = KOKKOS_INVALID_INDEX, size_t ex6 = KOKKOS_INVALID_INDEX, size_t ex7 = KOKKOS_INVALID_INDEX)\n"
@@ -3550,12 +3691,12 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
     "\n"
     "  // Constructor which is given explicit device and host views, and a parent.\n"
     "  // This can be used for subviewing/casting operations.\n"
-    "  LapisDualView(DeviceView d, HostView h, LapisDualViewBase* parent_)\n"
+    "  LAPIS::DualView(DeviceView d, HostView h, LAPIS::DualViewBase* parent_)\n"
     "    : device_view(d), host_view(h), parent(parent_)\n"
     "  {}\n"
     "\n"
     "  // Constructor for a host view from an external source (e.g. python)\n"
-    "  LapisDualView(HostView h)\n"
+    "  LAPIS::DualView(HostView h)\n"
     "  {\n"
     "    modified_host = true;\n"
     "    if constexpr(useSingleView)\n"
@@ -3609,7 +3750,7 @@ static void emitCppBoilerplate(KokkosCppEmitter &emitter, bool enablePythonWrapp
     "\n"
     "  DeviceView device_view;\n"
     "  HostView host_view;\n"
-    "  LapisDualViewBase* parent;\n"
+    "  LAPIS::DualViewBase* parent;\n"
     "};\n"
     "\n"
     "extern \"C\" void lapis_initialize()\n"

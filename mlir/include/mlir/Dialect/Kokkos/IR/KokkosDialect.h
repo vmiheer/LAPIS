@@ -41,6 +41,12 @@ Value getParentMemref(Value v);
 // for v based on where it gets accessed.
 MemorySpace getMemSpace(Value v);
 
+// Get the parallel nesting depth of the given Op
+// - If Op itself is a kokkos.parallel or scf.parallel, then that counts as 1
+// - Otherwise, Op counts for 0
+// - Each enclosing parallel counts for 1 more
+int getOpParallelDepth(Operation *op);
+
 } // namespace kokkos 
 } // namespace mlir
 
