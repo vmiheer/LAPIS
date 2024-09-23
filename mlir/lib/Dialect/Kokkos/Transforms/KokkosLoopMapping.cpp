@@ -20,22 +20,6 @@ using namespace mlir;
 
 namespace {
 
-// Get the parallel nesting depth of the given Op
-// - If Op itself is a kokkos.parallel or scf.parallel, then that counts as 1
-// - Otherwise, Op counts for 0
-// - Each enclosing parallel counts for 1 more
-int getOpParallelDepth(Operation *op) {
-  int depth = 0;
-  if (isa<scf::ParallelOp>(op) || isa<kokkos::RangeParallelOp>(op) ||
-      isa<kokkos::TeamParallelOp>(op) || isa<kokkos::ThreadParallelOp>(op))
-    depth++;
-  Operation *parent = op->getParentOp();
-  if (parent)
-    return depth + getOpParallelDepth(parent);
-  // op has no parent
-  return depth;
-}
-
 // Get the number of parallel nesting levels for the given ParallelOp
 // - The op itself counts as 1
 // - Each additional nesting level counts as another
@@ -46,7 +30,7 @@ int getParallelNumLevels(scf::ParallelOp op) {
   int maxDepth = 1;
   // note: walk starting from op visits op itself
   op->walk([&](scf::ParallelOp child) {
-    int d = getOpParallelDepth(child);
+    int d = kokkos::getOpParallelDepth(child);
     if (op == child) {
       selfDepth = d - 1;
     } else {
@@ -480,9 +464,9 @@ void mapNestedLoopsImpl(RewriterBase &rewriter, Operation *op,
                         int parLevelsRemaining) {
   // Make a list of the directly nested scf.parallel ops inside op, and their
   // respective nesting depths
-  int opDepth = getOpParallelDepth(op);
+  int opDepth = kokkos::getOpParallelDepth(op);
   op->walk([&](scf::ParallelOp child) {
-    int childDepth = getOpParallelDepth(child);
+    int childDepth = kokkos::getOpParallelDepth(child);
     if (childDepth == opDepth + 1) {
       int childNestingLevel = getParallelNumLevels(child);
       // Four cases for how child should be mapped:
@@ -509,7 +493,7 @@ void mapNestedLoopsImpl(RewriterBase &rewriter, Operation *op,
           level = kokkos::ParallelLevel::ThreadVector;
         }
         scfParallelToKokkosRange(rewriter, child,
-                                 kokkos::ExecutionSpace::Device, level);
+                                 kokkos::ExecutionSpace::TeamHandle, level);
       }
     }
   });
@@ -590,7 +574,7 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
       // be at ThreadVector level. There won't be any more scf.parallels nested
       // within those.
       newOp->walk<mlir::WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
-        scfParallelToKokkosRange(rewriter, innerParOp, exec,
+        scfParallelToKokkosRange(rewriter, innerParOp, kokkos::ExecutionSpace::TeamHandle,
                                  kokkos::ParallelLevel::ThreadVector);
         return WalkResult::skip();
       });

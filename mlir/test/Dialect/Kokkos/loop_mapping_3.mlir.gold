@@ -21,7 +21,7 @@ module {
               kokkos.yield %6 : f32
             }) : (f32, f32) -> ()
             kokkos.yield
-          } {executionSpace = 1 : i64, parallelLevel = 3 : i64}
+          } {executionSpace = 2 : i64, parallelLevel = 3 : i64}
           "kokkos.single"() <{level = 1 : i64}> ({
             memref.store %3, %arg1[%arg7, %arg9, %arg10] : memref<?x?x?xf32>
             kokkos.yield
@@ -42,7 +42,7 @@ module {
           kokkos.yield
         }) : () -> ()
         kokkos.yield
-      } {executionSpace = 1 : i64, parallelLevel = 2 : i64}
+      } {executionSpace = 2 : i64, parallelLevel = 2 : i64}
       "kokkos.single"() <{level = 0 : i64}> ({
         memref.store %1, %arg3[%arg7] : memref<?xf32>
         kokkos.yield
