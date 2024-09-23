@@ -37,7 +37,7 @@ int8_t* _mlir_ciface_newSparseTensor(
 namespace LAPIS
 {
   using TeamPolicy = Kokkos::TeamPolicy<>;
-  using TeamMember = typename TeamPol::member_type;
+  using TeamMember = typename TeamPolicy::member_type;
 
   template<typename V>
     StridedMemRefType<typename V::value_type, V::rank> viewToStridedMemref(const V& v)
@@ -125,11 +125,14 @@ namespace LAPIS
   template<typename DataType, typename Layout>
     struct DualView : public DualViewBase
   {
+    using HostView = Kokkos::View<DataType, Layout, Kokkos::DefaultHostExecutionSpace>;
+    using DeviceView = Kokkos::View<DataType, Layout, Kokkos::DefaultExecutionSpace>;
+
     static constexpr bool deviceAccessesHost = Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename DeviceView::memory_space>::accessible;
     static constexpr bool hostAccessesDevice = Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename DeviceView::memory_space>::accessible;
 
-    using HostView = Kokkos::View<DataType, Layout, Kokkos::DefaultHostExecutionSpace>;
-    using DeviceView = Kokkos::View<DataType, Layout, Kokkos::DefaultExecutionSpace>;
+    // Default constructor makes empty views and self as parent.
+    DualView() : device_view(), host_view(), parent(this) {}
 
     // Constructor for allocating a new view.
     // Does not actually allocate anything yet; instead 
@@ -170,7 +173,7 @@ namespace LAPIS
         device_view = DeviceView(h.data(), h.layout());
       }
       else {
-        device_view = DeviceView(Kokkos::view_alloc(Kokkos::WithoutInitializing, label + "_dev"), h.layout());
+        device_view = DeviceView(Kokkos::view_alloc(Kokkos::WithoutInitializing, h.label() + "_dev"), h.layout());
       }
       host_view = h;
       parent = this;
@@ -188,7 +191,7 @@ namespace LAPIS
 
     void syncHost() override
     {
-      if constexpr(useSingleView) {
+      if (device_view.data() == host_view.data()) {
         Kokkos::fence();
       }
       else {
@@ -204,9 +207,10 @@ namespace LAPIS
 
     void syncDevice() override
     {
-      // For single view, do not sync because
-      // all host execution spaces are already synchronous
-      if constexpr(!useSingleView) {
+      // If host and device views are the same, do not sync or fence
+      // because all host execution spaces are synchronous.
+      // Any changes on the host side are immediately visible on the device side.
+      if (device_view.data() != host_view.data()) {
         if(parent == this) {
           Kokkos::deep_copy(device_view, host_view);
           modified_host = false;
@@ -222,14 +226,4 @@ namespace LAPIS
     DualViewBase* parent;
   };
 } // namespace LAPIS
-
-extern "C" void lapis_initialize()
-{
-  if (!Kokkos::is_initialized()) Kokkos::initialize();
-}
-
-extern "C" void lapis_finalize()
-{
-  Kokkos::finalize();
-}
 
