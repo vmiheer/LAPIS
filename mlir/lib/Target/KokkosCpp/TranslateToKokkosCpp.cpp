@@ -1346,7 +1346,85 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::SingleOp 
   return success();
 }
 
+// If the join represented by op is a built-in reducer in Kokkos, return true and set reduction to its
+// name in C++ (e.g. "Kokkos:Min"). Otherwise return false.
+bool isBuiltinReduction(std::string& reduction, kokkos::UpdateReductionOp op) {
+  // Built-in joins should have only two ops in the body: a binary arithmetic op of the two arguments, and a yield of that result.
+  // Note: all Kokkos built in reductions have commutative joins, so here we test for both permutations of the arguments as operands.
+  Region& body = op.getReductionOperator();
+  auto bodyArgs = body.getArguments();
+  if(bodyArgs.size() != 2)
+    return false;
+  Value arg1 = bodyArgs[0];
+  Value arg2 = bodyArgs[1];
+  SmallVector<Operation*> bodyOps;
+  for(Operation& op : body.getOps()) {
+    bodyOps.push_back(&op);
+    if(bodyOps.size() > 2)
+      return false;
+  }
+  Operation* op1 = bodyOps[0];
+  Operation* op2 = bodyOps[1];
+  if(op1->getNumOperands() != 2 || op1->getNumResults() != 1)
+    return false;
+  // Is the second op a yield of the first op's result?
+  if(!isa<kokkos::YieldOp>(op2) || op1->getResults()[0] != op2->getOperands()[0])
+    return false;
+  // Does op1 take bodyArgs as its two operands?
+  if(!((op1->getOperands()[0] == arg1 && op1->getOperands()[1] == arg2)
+      || (op1->getOperands()[0] == arg2 && op1->getOperands()[1] == arg1))) {
+    return false;
+  }
+  Type type = op2->getOperands()[0].getType();
+  // Finally, if op1 has one of the supported types, return true.
+  if(isa<arith::AddFOp, arith::AddIOp>(op1)) {
+    reduction = "Kokkos::Sum";
+    return true;
+  }
+  else if(isa<arith::MulFOp, arith::MulIOp>(op1)) {
+    reduction = "Kokkos::Prod";
+    return true;
+  }
+  else if(isa<arith::AndIOp>(op1)) {
+    // Note: MLIR makes no distinction between logical and bitwise AND.
+    // AndIOp always behaves like a bitwise AND.
+    reduction = "Kokkos::BAnd";
+    return true;
+  }
+  else if(isa<arith::OrIOp>(op1)) {
+    // Note: MLIR makes no distinction between logical and bitwise OR.
+    // OrIOp always behaves like a bitwise OR.
+    reduction = "Kokkos::BOr";
+    return true;
+  }
+  //else if(isa<arith::MaxNumFOp, arith::MaximumFOp>(op1) {
+  else if(isa<arith::MaxFOp>(op1)) {
+    // NOTE: this is ignoring the distinction between MaxNum and Maximum for NaN handling:
+    // MaximumFOp(a, nan) = nan, but MaxNumFOp(a, nan) = a.
+    // We will just use the behavior of Kokkos::max, which is like MaximumFOp.
+    reduction = "Kokkos::Max";
+    return true;
+  }
+  else if(isa<arith::MinFOp>(op1)) {
+  //else if(isa<arith::MinNumFOp, arith::MinimumFOp>(op1)) {
+    reduction = "Kokkos::Min";
+    return true;
+  }
+  // We can only use the Kokkos built-in for integer if the signedness of the op matches the type.
+  else if((isa<arith::MaxSIOp>(op1) && type.isSignedInteger()) || (isa<arith::MaxUIOp>(op1) && type.isUnsignedInteger())) {
+    reduction = "Kokkos::Max";
+    return true;
+  }
+  else if((isa<arith::MinSIOp>(op1) && type.isSignedInteger()) || (isa<arith::MinUIOp>(op1) && type.isUnsignedInteger())) {
+    reduction = "Kokkos::Min";
+    return true;
+  }
+  // The reduction is some binary operation, but not one that Kokkos has as a built-in reducer.
+  return false;
+}
+
 static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::UpdateReductionOp op) {
+  auto& declOS = emitter.decl_ostream();
   return success();
 }
 
