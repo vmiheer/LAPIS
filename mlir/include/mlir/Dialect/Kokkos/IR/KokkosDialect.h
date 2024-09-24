@@ -47,6 +47,18 @@ MemorySpace getMemSpace(Value v);
 // - Each enclosing parallel counts for 1 more
 int getOpParallelDepth(Operation *op);
 
+// Determine which execution space (Host or Device) executes the given op.
+// Note that op may contain parallel kernels that execute on device,
+// but in that case op itself still counts as Host.
+kokkos::ExecutionSpace getOpExecutionSpace(Operation* op);
+
+// Get a list of the memrefs whose data is read by op, while running on the provided exec space.
+// This does not include memrefs where op only uses metadata (shape, type, layout).
+DenseSet<Value> getMemrefsRead(Operation* op, kokkos::ExecutionSpace space);
+
+// Get a list of the memrefs (possibly) whose data is written to by op.
+DenseSet<Value> getMemrefsWritten(Operation* op, kokkos::ExecutionSpace space);
+
 } // namespace kokkos 
 } // namespace mlir
 

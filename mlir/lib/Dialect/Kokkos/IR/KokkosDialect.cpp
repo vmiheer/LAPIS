@@ -1,8 +1,7 @@
 // ===- PartTensorDialect.cpp - part_tensor dialect implementation -----===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// See https://llvm.org/LICENSE.txt for license information.  // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -545,7 +544,7 @@ MemorySpace getMemSpace(Value v)
   // TODO: analyze the full call graph.
   // Check all return statements in a FuncOp,
   // and join the spaces of all possible returned values.
-  // Note: if v appears to be used on neither host or device, put it on host.
+  // Note: if v appears to be used on neither host nor device, put it on host.
   if(!deviceRepresented) {
     // either host only, or neither
     return MemorySpace::Host;
@@ -573,5 +572,67 @@ int getOpParallelDepth(Operation *op) {
   // op has no parent
   return depth;
 }
+
+// Determine which execution space (Host or Device) executes the given op.
+// Note that op may contain parallel kernels that execute on device,
+// but in that case op itself still counts as Host.
+// TODO: this will require a different approach if function calls are allowed in device kernels.
+kokkos::ExecutionSpace getOpExecutionSpace(Operation* op)
+{
+  if(op->getParentOfType<kokkos::ThreadParallelOp>() || op->getParentOfType<kokkos::TeamParallelOp>())
+    return kokkos::ExecutionSpace::Device;
+  if(auto rangeParallel = op->getParentOfType<kokkos::RangeParallelOp>())
+    return rangeParallel.getExecutionSpace();
+  return kokkos::ExecutionSpace::Host;
+}
+
+// Get a list of the memrefs read by op.
+DenseSet<Value> getMemrefsRead(Operation* op, kokkos::ExecutionSpace space)
+{
+  DenseSet<Value> memrefs;
+  op->walk([&](Operation* subOp) {
+    if(getOpExecutionSpace(subOp) != space)
+      return;
+    if(auto load = dyn_cast<memref::LoadOp>(subOp))
+      memrefs.insert(load.getMemref());
+    else if(auto atomicUpdate = dyn_cast<memref::AtomicRMWOp>(subOp))
+      memrefs.insert(atomicUpdate.getMemref());
+    else if(auto call = dyn_cast<func::CallOp>(subOp)) {
+      // Assume that all memref-typed arguments can be read by the callee.
+      for(Value arg : call.getArgOperands()) {
+        if(isa<MemRefType, UnrankedMemRefType>(arg.getType())) {
+          memrefs.insert(arg);
+        }
+      }
+    }
+  });
+  return memrefs;
+}
+
+// Get a list of the memrefs (possibly) written to by op.
+DenseSet<Value> getMemrefsWritten(Operation* op, kokkos::ExecutionSpace space)
+{
+  DenseSet<Value> memrefs;
+  op->walk([&](Operation* subOp) {
+    if(getOpExecutionSpace(subOp) != space)
+      return;
+    if(auto store = dyn_cast<memref::StoreOp>(subOp))
+      memrefs.insert(store.getMemref());
+    else if(auto atomicUpdate = dyn_cast<memref::AtomicRMWOp>(subOp))
+      memrefs.insert(atomicUpdate.getMemref());
+    else if(auto call = dyn_cast<func::CallOp>(subOp)) {
+      // Assume that all memref-typed arguments can be read by the callee,
+      // since memrefs of const data cannot be represented in MLIR.
+      // TODO: actually check non-extern callees for which memrefs get read/written.
+      for(Value arg : call.getArgOperands()) {
+        if(isa<MemRefType, UnrankedMemRefType>(arg.getType())) {
+          memrefs.insert(arg);
+        }
+      }
+    }
+  });
+  return memrefs;
+}
+
 }
 

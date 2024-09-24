@@ -57,7 +57,7 @@ void mlir::kokkos::buildSparseKokkosCompiler(
   pm.addPass(createParallelUnitStepPass());
   pm.addPass(createKokkosLoopMappingPass());
   //pm.addPass(createKokkosMemorySpaceAssignmentPass());
-  //pm.addPass(createKokkosDualViewManagementPass());
+  pm.addPass(createKokkosDualViewManagementPass());
   pm.addPass(createReconcileUnrealizedCastsPass());
   // Apply CSE (common subexpression elimination) now, since the
   // output of this pipeline gets fed directly into the Kokkos C++ emitter.

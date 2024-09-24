@@ -187,9 +187,12 @@ namespace LAPIS
     void syncHost() override
     {
       if (device_view.data() == host_view.data()) {
-        Kokkos::fence();
+        if(parent->modified_device) {
+          parent->modified_device = false;
+          Kokkos::fence();
+        }
       }
-      else {
+      else if (parent->modified_device) {
         if(parent == this) {
           Kokkos::deep_copy(host_view, device_view);
           modified_device = false;
@@ -207,11 +210,13 @@ namespace LAPIS
       // Any changes on the host side are immediately visible on the device side.
       if (device_view.data() != host_view.data()) {
         if(parent == this) {
-          Kokkos::deep_copy(device_view, host_view);
-          modified_host = false;
+          if(modified_host) {
+            Kokkos::deep_copy(device_view, host_view);
+            modified_host = false;
+          }
         }
         else {
-          parent->syncHost();
+          parent->syncDevice();
         }
       }
     }
