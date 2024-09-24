@@ -63,34 +63,29 @@ namespace LAPIS
           "Can only convert a StridedMemRefType to a Kokkos::View in HostSpace.");
       if constexpr(std::is_same_v<Layout, Kokkos::LayoutStride>)
       {
+        size_t extents[8] = {0};
+        size_t strides[8] = {0};
+        for(int i = 0; i < V::rank; i++) {
+          extents[i] = smr.sizes[i];
+          strides[i] = smr.strides[i];
+        }
         Layout layout(
-            (0 < V::rank) ? smr.sizes[0] : 0U,
-            (0 < V::rank) ? smr.strides[0] : 0U,
-            (1 < V::rank) ? smr.sizes[1] : 0U,
-            (1 < V::rank) ? smr.strides[1] : 0U,
-            (2 < V::rank) ? smr.sizes[2] : 0U,
-            (2 < V::rank) ? smr.strides[2] : 0U,
-            (3 < V::rank) ? smr.sizes[3] : 0U,
-            (3 < V::rank) ? smr.strides[3] : 0U,
-            (4 < V::rank) ? smr.sizes[4] : 0U,
-            (4 < V::rank) ? smr.strides[4] : 0U,
-            (5 < V::rank) ? smr.sizes[5] : 0U,
-            (5 < V::rank) ? smr.strides[5] : 0U,
-            (6 < V::rank) ? smr.sizes[6] : 0U,
-            (6 < V::rank) ? smr.strides[6] : 0U,
-            (7 < V::rank) ? smr.sizes[7] : 0U,
-            (7 < V::rank) ? smr.strides[7] : 0U);
+            extents[0], strides[0],
+            extents[1], strides[1],
+            extents[2], strides[2],
+            extents[3], strides[3],
+            extents[4], strides[4],
+            extents[5], strides[5],
+            extents[6], strides[6],
+            extents[7], strides[7]);
         return V(&smr.data[smr.offset], layout);
       }
+      size_t extents[8] = {0};
+      for(int i = 0; i < V::rank; i++)
+        extents[i] = smr.sizes[i];
       Layout layout(
-          (0 < V::rank) ? smr.sizes[0] : 0U,
-          (1 < V::rank) ? smr.sizes[1] : 0U,
-          (2 < V::rank) ? smr.sizes[2] : 0U,
-          (3 < V::rank) ? smr.sizes[3] : 0U,
-          (4 < V::rank) ? smr.sizes[4] : 0U,
-          (5 < V::rank) ? smr.sizes[5] : 0U,
-          (6 < V::rank) ? smr.sizes[6] : 0U,
-          (7 < V::rank) ? smr.sizes[7] : 0U);
+          extents[0], extents[1], extents[2], extents[3],
+          extents[4], extents[5], extents[6], extents[7]);
       if constexpr(std::is_same_v<Layout, Kokkos::LayoutLeft>)
       {
         int64_t expectedStride = 1;

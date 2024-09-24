@@ -289,9 +289,6 @@ private:
   /// names of values in a scope.
   std::stack<int64_t> valueInScopeCount;
   std::stack<int64_t> labelInScopeCount;
-  
-  /// Whether we are currently emitting the body of a device function 
-  bool insideDeviceCode = false;
 
   //Bookkeeping for a memref.SubViewOp (strided subview).
   //This is more general than Kokkos::subview - each dimension can have an arbitrary stride,
@@ -981,10 +978,21 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   // Lastly, if result is a memref, convert it back to View
   if(hasResult && resultIsMemref)
   {
-    os << emitter.getOrCreateName(callOp.getResult(0)) << " = LAPIS::stridedMemrefToView<";
-    if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), resultSpace)))
+    // stridedMemrefToView produces an unmanaged host view.
+    // If result is a DualView, wrap it in a DualView here.
+    os << emitter.getOrCreateName(callOp.getResult(0)) << " = ";
+    if(resultSpace == kokkos::MemorySpace::DualView) {
+      if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), resultSpace)))
+        return failure();
+      os << "(";
+    }
+    os << "LAPIS::stridedMemrefToView<";
+    if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), kokkos::MemorySpace::Host)))
       return failure();
-    os << ">(" << emitter.getOrCreateName(callOp.getResult(0)) << "_smr);\n";
+    os << ">(" << emitter.getOrCreateName(callOp.getResult(0)) << "_smr)";
+    if(resultSpace == kokkos::MemorySpace::DualView)
+      os << ")";
+    os << ";\n";
   }
   os.unindent();
   os << "}\n";
@@ -1406,7 +1414,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::ThreadPar
   std::string lambda = "lambda_" + emitter.getUniqueIdentifier();
   // First, declare the lambda.
   emitter << "auto " << lambda << " = \n";
-  emitter << "KOKKOS_LAMBDA(const LAPIS::TeamMem& t";
+  emitter << "KOKKOS_LAMBDA(const LAPIS::TeamMember& team";
   if(isReduction) {
     if(op->getNumResults() > 1)
       return op.emitError("Currently, can only handle 1 reducer per parallel");
@@ -1419,10 +1427,13 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::ThreadPar
   }
   emitter << ") {\n";
   // Compute the outer induction variable in terms of league rank, team rank and team size.
-  emitter << "  size_t induction = t.league_rank() * t.team_size() + t.team_rank();\n";
+  emitter << "  size_t induction = team.league_rank() * team.team_size() + team.team_rank();\n";
   // And exit immediately if this thread has nothing to do.
   // This is OK because ThreadParallel can't contain any team-wide synchronization.
-  emitter << "  if(induction >= " << emitter.getOrCreateName(op.getNumIters()) << ") return;\n";
+  emitter << "  if(induction >= ";
+  if(failed(emitter.emitValue(op.getNumIters())))
+    return failure();
+  emitter << ") return;\n";
   emitter.assignName("induction", op.getInductionVar());
   // Emit body ops.
   emitter.ostream().indent();
@@ -1437,10 +1448,16 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::ThreadPar
   // If the hint value is 0, it means no hint was provided so arbitrarily use 8 as the target.
   // TODO: is there a better choice for this?
   std::string vectorLengthTarget = "targetVectorLength_" + emitter.getUniqueIdentifier();
-  emitter << "size_t " << vectorLengthTarget << " = " << emitter.getOrCreateName(op.getVectorLengthHint());
-  emitter << " ? " << emitter.getOrCreateName(op.getVectorLengthHint()) << " : 8;\n";
+  emitter << "size_t " << vectorLengthTarget << " = ";
+  if(failed(emitter.emitValue(op.getVectorLengthHint())))
+    return failure();
+  emitter << " ? ";
+  if(failed(emitter.emitValue(op.getVectorLengthHint())))
+    return failure();
+  emitter << " : 8;\n";
   std::string vectorLength = "vectorLength_" + emitter.getUniqueIdentifier();
-  emitter << "size_t " << vectorLength << " = Kokkos::min(" << vectorLengthTarget << ", LAPIS::TeamPolicy::vector_length_max());\n";
+  emitter << "size_t " << vectorLength << " = Kokkos::min<size_t>(";
+  emitter << vectorLengthTarget << ", LAPIS::TeamPolicy::vector_length_max());\n";
   // Since we have a lambda and a vector length, we can now query a temporary TeamPolicy for the best team size
   std::string teamSize = "teamSize_" + emitter.getUniqueIdentifier();
   emitter << "size_t " << teamSize << " = LAPIS::TeamPolicy(1, 1, " << vectorLength << ").team_size_recommended(" << lambda << ", ";
@@ -1451,13 +1468,16 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::ThreadPar
   emitter << ");\n";
   // Get league size from team size and number of outer iters op performs
   std::string leagueSize = "leagueSize_" + emitter.getUniqueIdentifier();
-  emitter << "size_t " << leagueSize << " = (" << emitter.getOrCreateName(op.getNumIters()) << " + " << teamSize << " - 1) / " << teamSize << ";\n";
+  emitter << "size_t " << leagueSize << " = (";
+  if(failed(emitter.emitValue(op.getNumIters())))
+    return failure();
+  emitter << " + " << teamSize << " - 1) / " << teamSize << ";\n";
   // Finally, launch the lambda with the correct policy.
   if(isReduction)
     emitter << "Kokkos::parallel_reduce";
   else
     emitter << "Kokkos::parallel_for";
-  emitter << "(LAPIS::TeamPolicy(" << leagueSize << ", " << teamSize << ", " << vectorLength << "), lambda";
+  emitter << "(LAPIS::TeamPolicy(" << leagueSize << ", " << teamSize << ", " << vectorLength << "), " << lambda;
   if(isReduction) {
     // Determine what kind of reduction is being done, if any
     kokkos::UpdateReductionOp reduction = op.getReduction();
