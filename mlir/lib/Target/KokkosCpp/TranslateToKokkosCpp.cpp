@@ -611,8 +611,15 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     memref::StoreOp op) {
-  //TODO: if in host code, use a mirror view?
-  emitter << emitter.getOrCreateName(op.getMemref()) << "(";
+  emitter << emitter.getOrCreateName(op.getMemref());
+  if(kokkos::getMemSpace(op.getMemref()) == kokkos::MemorySpace::DualView) {
+    // Which view to access depends if we are in host or device context
+    if(kokkos::getOpExecutionSpace(op) == kokkos::ExecutionSpace::Device)
+      emitter << ".device_view";
+    else
+      emitter << ".host_view";
+  }
+  emitter << "(";
   for(auto iter = op.getIndices().begin(); iter != op.getIndices().end(); iter++)
   {
     if(iter != op.getIndices().begin())
@@ -634,6 +641,13 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ' ' << emitter.getOrCreateName(op.getResult()) << " = ";
   if(failed(emitter.emitValue(op.getMemRef())))
     return op.emitError("Failed to emit the LoadOp's memref value");
+  if(kokkos::getMemSpace(op.getMemref()) == kokkos::MemorySpace::DualView) {
+    // Which view to access depends if we are in host or device context
+    if(kokkos::getOpExecutionSpace(op) == kokkos::ExecutionSpace::Device)
+      emitter << ".device_view";
+    else
+      emitter << ".host_view";
+  }
   emitter << "(";
   for(auto iter = op.getIndices().begin(); iter != op.getIndices().end(); iter++)
   {
@@ -1339,12 +1353,16 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::RangePara
     for(Value bound : op.getUpperBound()) {
       if(count++)
         emitter << ", ";
-      emitter << emitter.getOrCreateName(bound);
+      if(failed(emitter.emitValue(bound)))
+        return failure();
     }
     emitter << "}, ";
   }
   else {
-    emitter << emitter.getOrCreateName(op.getUpperBound().front());
+    // 1D RangePolicy. Requires both lower and upper bounds.
+    emitter << "0, ";
+    if(failed(emitter.emitValue(op.getUpperBound().front())))
+      return failure();
   }
   emitter << "),\n";
   if(op.getExecutionSpace() == kokkos::ExecutionSpace::Device)
@@ -1586,8 +1604,27 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::UpdateRed
   return success();
 }
 
+static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::SyncOp op) {
+  emitter << emitter.getOrCreateName(op.getView()) << ".sync";
+  if(op.getMemorySpace() == kokkos::MemorySpace::Host)
+    emitter << "Host()";
+  else
+    emitter << "Device()";
+  return success();
+}
+
+static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::ModifyOp op) {
+  emitter << emitter.getOrCreateName(op.getView()) << ".modify";
+  if(op.getMemorySpace() == kokkos::MemorySpace::Host)
+    emitter << "Host()";
+  else
+    emitter << "Device()";
+  return success();
+}
+
 static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::YieldOp op) {
-  // Yield (when used as an implicit terminator) doesn't do anything
+  // YieldOp in general doesn't do anything.
+  // In contexts where it does (e.g. UpdateReductionOp), it will be handled there.
   return success();
 }
 
@@ -3255,7 +3292,7 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
           .Case<func::FuncOp, ModuleOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Kokkos ops.
-          .Case<kokkos::RangeParallelOp, kokkos::TeamParallelOp, kokkos::ThreadParallelOp, kokkos::TeamBarrierOp, kokkos::SingleOp, kokkos::UpdateReductionOp, kokkos::YieldOp>(
+          .Case<kokkos::RangeParallelOp, kokkos::TeamParallelOp, kokkos::ThreadParallelOp, kokkos::TeamBarrierOp, kokkos::SingleOp, kokkos::UpdateReductionOp, kokkos::SyncOp, kokkos::ModifyOp, kokkos::YieldOp>(
               [&](auto op) { return printOperation(*this, op); })
           // CF ops.
           .Case<cf::AssertOp>(

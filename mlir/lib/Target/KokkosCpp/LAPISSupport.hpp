@@ -111,8 +111,9 @@ namespace LAPIS
 
   struct DualViewBase
   {
-    virtual void syncHost();
-    virtual void syncDevice();
+    virtual ~DualViewBase() {}
+    virtual void syncHost() = 0;
+    virtual void syncDevice() = 0;
     bool modified_host = false;
     bool modified_device = false;
   };
