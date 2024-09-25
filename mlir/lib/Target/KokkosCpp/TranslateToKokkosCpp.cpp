@@ -321,6 +321,12 @@ public:
   bool sparseSupportFunctionPointerResults(StringRef mlirName) {return sparseSupportFunctions[mlirName.str()].first;}
   // Get the real C function name for the given MLIR function name
   std::string getSparseSupportFunctionName(StringRef mlirName) {return sparseSupportFunctions[mlirName.str()].second;}
+
+  // List of DualViews which originated from sparse support functions
+  // (meaning that a SparseTensorStorageBase object owns the host-side memory).
+  // Right before a function return, all these should be synced to host in case
+  // the owning tensor is an output.
+  SmallVector<Value> dualViewsFromTensors;
 };
 } // namespace
 
@@ -964,8 +970,7 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   }
   os << emitter.getSparseSupportFunctionName(callOp.getCallee()) << "(";
   // Pointer to the result is first argument, if pointerResult and there is a result
-  if(hasResult && pointerResults)
-  {
+  if(hasResult && pointerResults) {
     if(resultIsMemref)
       os << "&" << emitter.getOrCreateName(callOp.getResult(0)) << "_smr";
     else
@@ -975,14 +980,12 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   }
   // Emit the input arguments, passing in _smr suffixed values for memrefs
   bool firstArg = true;
-  for(Value arg : callOp.getOperands())
-  {
+  for(Value arg : callOp.getOperands()) {
     if(!firstArg)
       os << ", ";
     if(isa<MemRefType>(arg.getType()))
       os << "&" << emitter.getOrCreateName(arg) << "_smr";
-    else
-    {
+    else {
       if(failed(emitter.emitValue(arg)))
         return failure();
     }
@@ -990,22 +993,23 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   }
   os << ");\n";
   // Lastly, if result is a memref, convert it back to View
-  if(hasResult && resultIsMemref)
-  {
+  if(hasResult && resultIsMemref) {
     // stridedMemrefToView produces an unmanaged host view.
     // If result is a DualView, wrap it in a DualView here.
     os << emitter.getOrCreateName(callOp.getResult(0)) << " = ";
     if(resultSpace == kokkos::MemorySpace::DualView) {
-      if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), resultSpace)))
-        return failure();
-      os << "(";
+      // The result is a DualView and came from a support function - add it to the list
+      emitter.dualViewsFromTensors.push_back(callOp.getResult(0));
+      //if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), resultSpace)))
+      //  return failure();
+      //os << "(";
     }
     os << "LAPIS::stridedMemrefToView<";
     if(failed(emitter.emitMemrefType(callOp.getLoc(), dyn_cast<MemRefType>(callOp.getResult(0).getType()), kokkos::MemorySpace::Host)))
       return failure();
     os << ">(" << emitter.getOrCreateName(callOp.getResult(0)) << "_smr)";
-    if(resultSpace == kokkos::MemorySpace::DualView)
-      os << ")";
+    //if(resultSpace == kokkos::MemorySpace::DualView)
+    //  os << ")";
     os << ";\n";
   }
   os.unindent();
@@ -1013,8 +1017,7 @@ static LogicalResult printSupportCall(KokkosCppEmitter &emitter, func::CallOp ca
   return success();
 }
 
-static LogicalResult printOperation(KokkosCppEmitter &emitter, func::CallOp callOp)
-{
+static LogicalResult printOperation(KokkosCppEmitter &emitter, func::CallOp callOp) {
   if(emitter.isSparseSupportFunction(callOp.getCallee()))
     return printSupportCall(emitter, callOp);
 
@@ -1950,6 +1953,11 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, scf::YieldOp yiel
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     func::ReturnOp returnOp) {
+  // First, sync all tensor-owned DualViews with
+  // lifetimes inside this function to host.
+  for(auto dv : emitter.dualViewsFromTensors) {
+    emitter << emitter.getOrCreateName(dv) << ".syncHost();\n";
+  }
   raw_ostream &os = emitter.ostream();
   os << "return";
   switch (returnOp.getNumOperands()) {
@@ -1978,6 +1986,8 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, ModuleOp moduleOp
 }
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp functionOp) {
+  // Clear dualViewsFromTensors of any values from previously emitted functions.
+  emitter.dualViewsFromTensors.clear();
   // Need to replace function names in 2 cases:
   //  1. functionOp is a forward declaration for a sparse support function
   //  2. functionOp's name is "main"
@@ -2225,11 +2235,9 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
   os.indent();
   //FOR DEBUGGING THE EMITTED CODE:
   //The next 3 lines makes the generated function pause to let you attach a debugger
-  /*
   os << "std::cout << \"Starting MLIR function on process \" << getpid() << '\\n';\n";
   os << "std::cout << \"Optionally attach debugger now, then press <Enter> to continue: \";\n";
   os << "std::cin.get();\n";
-  */
   //Create/allocate device Kokkos::Views for the memref inputs.
   //TODO: if executing on on host, we might as well use the NumPy buffers directly
   if(!emitter.supportingSparse())

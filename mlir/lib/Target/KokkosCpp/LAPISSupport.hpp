@@ -2,6 +2,7 @@
 #include <type_traits>
 #include <cstdint>
 #include <unistd.h>
+#include <iostream>
 
 // If building a CPP driver, we can use the original StridedMemRefType class from MLIR,
 // so do not redefine it here.
@@ -173,6 +174,26 @@ namespace LAPIS
       }
       host_view = h;
       parent = this;
+    }
+
+    // Copy-assignment equivalent to the above constructor.
+    // Shallow copying a temporary DualView to a persistent one leaves the
+    // persistent one in an invalid state, since its parent pointer still points to the temporary.
+    //
+    // Shallow-copy from one persistent DualView to another persistent or temporary is OK, as long
+    // as the lifetime of original covers the lifetime of the copy.
+    DualView& operator=(const HostView& h)
+    {
+      modified_host = true;
+      if constexpr(deviceAccessesHost) {
+        device_view = DeviceView(h.data(), h.layout());
+      }
+      else {
+        device_view = DeviceView(Kokkos::view_alloc(Kokkos::WithoutInitializing, h.label() + "_dev"), h.layout());
+      }
+      host_view = h;
+      parent = this;
+      return *this;
     }
 
     void modifyHost()
