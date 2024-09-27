@@ -20,16 +20,36 @@ using namespace mlir;
 
 namespace {
 
-struct KokkosMemorySpaceRewriter : public OpRewritePattern<scf::ParallelOp> {
-  using OpRewritePattern<scf::ParallelOp>::OpRewritePattern;
+/*
+struct KokkosMemorySpaceRewriter : public OpRewritePattern<ModuleOp> {
+  using OpRewritePattern<ModuleOp>::OpRewritePattern;
 
   KokkosMemorySpaceRewriter (MLIRContext *context)
       : OpRewritePattern(context) {}
 
-  LogicalResult matchAndRewrite(scf::ParallelOp op, PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ModuleOp op, PatternRewriter &rewriter) const override {
+    return failure();
+    if(op.getArgumentTypes().size() != 1)
+      return failure();
+    if(MemRefType mrt = dyn_cast<MemRefType>(op.getArgumentTypes[0])) {
+      printf("Trying to clone func, where the parameter adds a mem space attribute.\n");
+      auto attr = kokkos::MemorySpaceAttr::get(rewriter.getContext(), kokkos::MemorySpace::Device);
+      MemRefType newMRT = rewriter.create<MemRefType>(mrt.getShape(), mrt.getElementType(), mrt.getLayout(), attr);
+      auto newFunc = rewriter.create<func::FuncOp>
+      return success();
+    }
+
+    // For each new memref-typed value (block argument or one produced by an op),
+    // iterate over all ops that use it and assign its memory space based on whether
+    // those ops are in device or host code.
+    //
+    // Not all ops count as a "use" for this so skip: alloc/alloca/dealloc and slicing/viewing/casting ops.
+    // These never actually access data. For example, an alloc may run on host and
+    // allocate a device memref, but that doesn't mean the memref should also be accessible on host.
     return failure();
   }
 };
+*/
 
 } // namespace
 

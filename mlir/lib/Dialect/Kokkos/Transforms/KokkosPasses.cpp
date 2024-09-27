@@ -25,7 +25,6 @@ namespace mlir {
 #define GEN_PASS_DEF_PARALLELUNITSTEP
 #define GEN_PASS_DEF_KOKKOSLOOPMAPPING
 #define GEN_PASS_DEF_KOKKOSMEMORYSPACEASSIGNMENT
-#define GEN_PASS_DEF_KOKKOSDUALVIEWMANAGEMENT
 
 #define GEN_PASS_DEF_SPARSEKOKKOSCODEGEN
 
@@ -79,20 +78,6 @@ struct KokkosMemorySpaceAssignmentPass
   }
 };
 
-struct KokkosDualViewManagementPass
-    : public impl::KokkosDualViewManagementBase<KokkosDualViewManagementPass> {
-
-  KokkosDualViewManagementPass() = default;
-  KokkosDualViewManagementPass(const KokkosDualViewManagementPass& pass) = default;
-
-  void runOnOperation() override {
-    auto *ctx = &getContext();
-    RewritePatternSet patterns(ctx);
-    populateKokkosDualViewManagementPatterns(patterns);
-    (void) applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
-  }
-};
-
 struct SparseKokkosCodegenPass
     : public impl::SparseKokkosCodegenBase<SparseKokkosCodegenPass> {
 
@@ -122,11 +107,6 @@ std::unique_ptr<Pass> mlir::createKokkosLoopMappingPass()
 std::unique_ptr<Pass> mlir::createKokkosMemorySpaceAssignmentPass()
 {
   return std::make_unique<KokkosMemorySpaceAssignmentPass>();
-}
-
-std::unique_ptr<Pass> mlir::createKokkosDualViewManagementPass()
-{
-  return std::make_unique<KokkosDualViewManagementPass>();
 }
 
 // Old Kokkos codegen pass

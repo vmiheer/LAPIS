@@ -42,13 +42,14 @@ def KokkosMemorySpaceAssignment : Pass<"kokkos-assign-memory-spaces"> {
   ];
 }
 
-def KokkosDualViewManagement : Pass<"kokkos-dualview-management"> {
+def KokkosDualViewManagement : Pass<"kokkos-dualview-management", "ModuleOp"> {
   let summary = "Insert sync and modify operations for DualView-typed memrefs";
   let description = [{
   }];
   let constructor = "mlir::createKokkosDualViewManagementPass()";
   let dependentDialects = [
     "arith::ArithDialect",
+    "func::FuncDialect",
     "kokkos::KokkosDialect",
     "memref::MemRefDialect",
     "scf::SCFDialect"

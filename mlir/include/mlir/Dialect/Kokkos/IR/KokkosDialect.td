@@ -74,34 +74,26 @@ def Kokkos_SingleLevel : I64EnumAttr<
 class Kokkos_Op<string mnemonic, list<Trait> traits = []>
     : Op<Kokkos_Dialect, mnemonic, traits>;
 
-
 def RangeParallelOp : Kokkos_Op<"range_parallel",
     [AutomaticAllocationScope,
-     AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
      RecursiveMemoryEffects,
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
-     SingleBlockImplicitTerminator<"scf::YieldOp">]> {
+     SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
   let summary = "Kokkos base parallel for operation";
   let description = [{
   }];
 
   let arguments = (ins Kokkos_ExecutionSpace:$executionSpace,
                        Kokkos_ParallelLevel:$parallelLevel,
-                       Variadic<Index>:$upperBound,
-                       Variadic<AnyType>:$initVals);
+                       Variadic<Index>:$upperBound);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel, "ValueRange":$upperBounds,
-      "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel, "ValueRange":$upperBounds,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
+    OpBuilder<(ins "::mlir::kokkos::ExecutionSpace":$executionSpace, "::mlir::kokkos::ParallelLevel":$parallelLevel,
+    "ValueRange":$upperBounds, "TypeRange":$resultTypes)>
   ];
 
   let extraClassDeclaration = [{
@@ -109,7 +101,12 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
       return getBody()->getArguments();
     }
     unsigned getNumLoops() { return getUpperBound().size(); }
-    unsigned getNumReductions() { return getInitVals().size(); }
+    unsigned getNumReductions() { return getNumResults(); }
+
+    // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
+    // NOTE: in future LLVM, scf.parallel can support multiple reductions but there will still be only one
+    // scf.reduce op per loop, which updates them all. kokkos.update_reduction will work the same way.
+    kokkos::UpdateReductionOp getReduction();
   }];
 
   let hasCanonicalizer = 0;
@@ -122,10 +119,8 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
      RecursiveMemoryEffects,
      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
-     SingleBlockImplicitTerminator<"scf::YieldOp">]> {
+     SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
   let summary = "Kokkos TeamPolicy parallel for/reduce";
-  let description = [{
-  }];
 
   let arguments = (ins Index:$leagueSize,
                        Index:$teamSizeHint,
@@ -139,22 +134,24 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   // ValueRange (body block arguments) should contain exactly 5 values:
   // league size, team size, vector length, league rank, team rank
 
-  // Note that because we don't know the backend/architecture ahead of time,
-  // the team size and vector length passed into the body
-  // will be computed at runtime based on TeamPolicy::team_size_
-  // match the TeamParallel's input values
+  // Because we don't know the hardware architecture ahead of time,
+  // the team size and vector length passed into the body are just hints.
+  // The real team size/vector length have to be computed at runtime.
   let builders = [
     OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
-      "ValueRange":$initVals,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
-    OpBuilder<(ins "Value":$leagueSize, "Value":$teamSizeHint, "Value":$vectorLengthHint,
-      CArg<"function_ref<void (OpBuilder &, Location, ValueRange)>",
-           "nullptr">:$bodyBuilderFn)>,
+      "TypeRange":$resultTypes)>
   ];
 
   let extraClassDeclaration = [{
     unsigned getNumReductions() { return getInitVals().size(); }
+    // leagueSize is an operand, so getLeagueSize() already exists.
+    Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
+    Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
+    Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }
+    Value getTeamRank() { return getLoopBody().front().getArguments()[4]; }
+
+    // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
+    kokkos::UpdateReductionOp getReduction();
   }];
 
   let hasCanonicalizer = 0;
@@ -162,18 +159,61 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   let hasVerifier = 0;
 }
 
-def TeamBarrierOp : Kokkos_Op<"barrier", [HasParent<"TeamParallelOp">]> {
+def ThreadParallelOp : Kokkos_Op<"thread_parallel",
+    [AutomaticAllocationScope,
+     DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+     RecursiveMemoryEffects,
+     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+     SingleBlockImplicitTerminator<"kokkos::YieldOp">]> {
+  let summary = "Kokkos 2-level parallel for/reduce";
+  let description = [{
+    A `kokkos.thread_parallel` op represents a 2-level nested parallel loop.
+    Each outer level iteration is mapped to a Kokkos thread using a combination of `TeamPolicy` and `TeamThreadRange`.
+    Each inner level iteration is mapped to a vector lane within the thread using `ThreadVectorRange`.
+    The team size and distribution of outer iterations to teams is handled automatically by the
+    Kokkos emitter and at runtime.
+    Because the outer iterations must be independent and Kokkos ThreadVector loops have
+    implicit synchronization, `kokkos.team_barrier` is never used inside this op. However,
+    per-thread `kokkos.single` can be used to ensure op(s) with side effects happen exactly once
+    per outer iteration.
+  }];
+
+  let arguments = (ins Index:$numIters,
+                       Index:$vectorLengthHint,
+                       Variadic<AnyType>:$initVals);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$region);
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$numIters, "Value":$vectorLengthHint,
+    "TypeRange":$resultTypes)>
+  ];
+
+  let extraClassDeclaration = [{
+    unsigned getNumReductions() { return getInitVals().size(); }
+    Value getInductionVar() { return getLoopBody().front().getArguments()[0]; }
+
+    // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
+    kokkos::UpdateReductionOp getReduction();
+  }];
+
+  let hasCanonicalizer = 0;
+  let hasCustomAssemblyFormat = 0;
+  let hasVerifier = 0;
+}
+
+def TeamBarrierOp : Kokkos_Op<"team_barrier", [HasParent<"TeamParallelOp">]> {
   let summary = "Synchronize all threads in a team. In C++, t.team_barrier()";
   let description = [{
     Kokkos team barrier, to be called within a TeamPolicy context. All threads in
     the team must reach the barrier together to avoid deadlock, but this is enforced by the
     fact that TeamParallelOp must be the parent.
     ```
-    kokkos.barrier
+    kokkos.team_barrier
     ```
   }];
-
-  let assemblyFormat = "attr-dict";
 }
 
 def SyncOp : Kokkos_Op<"sync"> {
@@ -227,41 +267,36 @@ def SingleOp : Kokkos_Op<"single", [SingleBlockImplicitTerminator<"kokkos::Yield
   let hasVerifier = 0;
 }
 
-def ReduceOp : Kokkos_Op<"reduce",
-[ParentOneOf<["RangeParallelOp", "TeamParallelOp"]>]>
+def UpdateReductionOp : Kokkos_Op<"update_reduction",
+[ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp"]>]>
 {
-  let summary = "reduce operation for parallel for";
+  let summary = "Contribute to a reduction inside a parallel loop";
   let description = [{
+    Update a partial reduction inside a parallel loop.
+    The ``update`` operand is the value to contribute to the reduction.
+    The body defines the ``join`` operation for combining two partial reductions
+    or a partial reduction and a value.
+    The ``identity`` operand is the value for which ``join(x, identity) == x`` for all ``x``.
     The result of the reduce operation's body must have the same type as the
     operands and associated result value of the parallel loop operation.
-    Example:
-
-    ```mlir
-    %operand = arith.constant 1.0 : f32
-    kokkos.reduce(%operand) : f32 {
-      ^bb0(%lhs : f32, %rhs: f32):
-        %res = arith.addf %lhs, %rhs : f32
-        kokkos.yield %res : f32
-    }
-    ```
   }];
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<(ins "Value":$operand,
+    OpBuilder<(ins "Value":$update, "Value":$identity,
       CArg<"function_ref<void (OpBuilder &, Location, Value, Value)>",
            "nullptr">:$bodyBuilderFn)>
   ];
 
-  let arguments = (ins AnyType:$operand);
+  let arguments = (ins AnyType:$update, AnyType:$identity);
   let hasCustomAssemblyFormat = 0;
   let regions = (region SizedRegion<1>:$reductionOperator);
   let hasRegionVerifier = 0;
 }
 
 def YieldOp : Kokkos_Op<"yield", [Pure, ReturnLike, Terminator,
-    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "SingleOp", "ReduceOp"]>]> {
-  let summary = "termination operation";
+    ParentOneOf<["RangeParallelOp", "TeamParallelOp", "ThreadParallelOp", "SingleOp", "UpdateReductionOp"]>]> {
+  let summary = "Region terminator";
   let description = [{ 
     "kokkos.yield" terminates the region of a parallel, single or reduction op.
     If enclosed in a parallel op, it should have zero operands.

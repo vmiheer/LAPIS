@@ -29,7 +29,6 @@ std::unique_ptr<Pass> createKokkosLoopMappingPass();
 void populateKokkosMemorySpaceAssignmentPatterns(RewritePatternSet &patterns);
 std::unique_ptr<Pass> createKokkosMemorySpaceAssignmentPass();
 
-void populateKokkosDualViewManagementPatterns(RewritePatternSet &patterns);
 std::unique_ptr<Pass> createKokkosDualViewManagementPass();
 
 // Old Kokkos codegen for kernel outlining and host-device copying

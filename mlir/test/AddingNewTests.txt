@@ -1,10 +1,10 @@
-# Turn an input MLIR file into a FileCheck test, in-place (minus the RUN directive)
-# This modifies input.mlir by adding CHECK directives.
-lapis-opt input.mlir <passes> | generate-test-checks.py --source input.mlir -i
+1. Write the input MLIR program in the desired location, e.g. Dialect/Kokkos
+2. Run generate-gold-compare, which takes 2 arguments:
+   generate-gold-compare.py <pass flags> <input MLIR>
+   For example:
+   ./generate-gold-compare.py --parallel-unit-step Dialect/Kokkos/par_unit_step_0.mlir
+3. Check that the generated gold file is correct.
 
-# Same, not in-place (input.mlir not modified).
-# Instead, input_with_test.mlir created with CHECK directives.
-lapis-opt input.mlir <passes> | generate-test-checks.py --source input.mlir &> input_with_test.mlir
+Steps 2-3 can be repeated if the pass's behavior changes, or if the
+pass flags for a test need to change.
 
-Then insert this on the first line (this tells lit what to run)
-// RUN: %lapis-opt %s <passes>
