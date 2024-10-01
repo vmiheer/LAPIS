@@ -124,15 +124,14 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
 
   let arguments = (ins Index:$leagueSize,
                        Index:$teamSizeHint,
-                       Index:$vectorLengthHint,
-                       Variadic<AnyType>:$initVals);
+                       Index:$vectorLengthHint);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let skipDefaultBuilders = 1;
 
-  // ValueRange (body block arguments) should contain exactly 5 values:
-  // league size, team size, vector length, league rank, team rank
+  // ValueRange (body block arguments) should contain exactly 4 values:
+  // league size, team size, league rank, team rank
 
   // Because we don't know the hardware architecture ahead of time,
   // the team size and vector length passed into the body are just hints.
@@ -143,12 +142,11 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   ];
 
   let extraClassDeclaration = [{
-    unsigned getNumReductions() { return getInitVals().size(); }
+    unsigned getNumReductions() { return getNumResults(); }
     // leagueSize is an operand, so getLeagueSize() already exists.
     Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
-    Value getVectorLength() { return getLoopBody().front().getArguments()[2]; }
-    Value getLeagueRank() { return getLoopBody().front().getArguments()[3]; }
-    Value getTeamRank() { return getLoopBody().front().getArguments()[4]; }
+    Value getLeagueRank() { return getLoopBody().front().getArguments()[2]; }
+    Value getTeamRank() { return getLoopBody().front().getArguments()[3]; }
 
     // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
     kokkos::UpdateReductionOp getReduction();
@@ -179,8 +177,7 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
   }];
 
   let arguments = (ins Index:$numIters,
-                       Index:$vectorLengthHint,
-                       Variadic<AnyType>:$initVals);
+                       Index:$vectorLengthHint);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
 
@@ -192,7 +189,7 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
   ];
 
   let extraClassDeclaration = [{
-    unsigned getNumReductions() { return getInitVals().size(); }
+    unsigned getNumReductions() { return getNumResults(); }
     Value getInductionVar() { return getLoopBody().front().getArguments()[0]; }
 
     // Get the reduction op for this parallel, if any. It may be directly nested or inside a single.
