@@ -8,9 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir-c/kmPass.h"
 #include "mlir/Pass/kmPassManager.h"
-#include "mlir/Target/KokkosCpp/KokkosCppEmitter.h"
 
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Pass.h"
@@ -45,34 +43,6 @@ mlirPassManagerGetAsOpPassManager(MlirPassManager passManager) {
 MlirLogicalResult mlirPassManagerRunOnOp(MlirPassManager passManager,
                                          MlirOperation op) {
   return wrap(unwrap(passManager)->run(unwrap(op)));
-}
-
-MlirLogicalResult lapisEmitKokkos(MlirModule module,
-                                     const char* cxxSourceFile,
-                                     const char* pySourceFile) {
-  ModuleOp op = unwrap(module);
-  std::error_code ec;
-  llvm::raw_fd_ostream cxxFileHandle(StringRef(cxxSourceFile), ec);
-  llvm::raw_fd_ostream pyFileHandle(StringRef(pySourceFile), ec);
-  LogicalResult result = kokkos::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ false);
-  pyFileHandle.close();
-  cxxFileHandle.close();
-  return wrap(result);
-}
-
-MlirLogicalResult lapisEmitKokkosSparse(MlirModule module,
-                                     const char* cxxSourceFile,
-                                     const char* pySourceFile,
-                                     bool useHierarchical,
-                                     bool isLastKernel) {
-  ModuleOp op = unwrap(module);
-  std::error_code ec;
-  llvm::raw_fd_ostream cxxFileHandle(StringRef(cxxSourceFile), ec);
-  llvm::raw_fd_ostream pyFileHandle(StringRef(pySourceFile), ec);
-  LogicalResult result = kokkos::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ true, useHierarchical, isLastKernel);
-  pyFileHandle.close();
-  cxxFileHandle.close();
-  return wrap(result);
 }
 
 void mlirPassManagerEnableIRPrinting(MlirPassManager passManager) {

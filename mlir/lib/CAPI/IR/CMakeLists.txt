@@ -1,6 +1,7 @@
 # Main API shared library.
 add_mlir_public_c_api_library(LAPISCAPIIR
   Pass.cpp
+  EmitKokkos.cpp
 
   LINK_LIBS PUBLIC
   MLIRCAPIIR

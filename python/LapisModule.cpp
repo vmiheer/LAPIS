@@ -4,21 +4,19 @@
 
 #include "IRModule.h"
 #include "mlir-c/Bindings/Python/Interop.h"
-#include "mlir-c/kmPass.h"
+#include "mlir-c/EmitKokkos.h"
 
 #include "mlir/InitAllKokkosPasses.h"
 
-void lapisRegisterAllPasses() {
-  mlir::registerAllKokkosPasses();
-}
+void lapisRegisterAllPasses() { mlir::registerAllKokkosPasses(); }
 
 namespace py = pybind11;
 
 namespace lapis {
-  namespace python {
-    void populatePassManagerSubmodule(py::module &m);
-  }
+namespace python {
+void populatePassManagerSubmodule(py::module &m);
 }
+}  // namespace lapis
 
 PYBIND11_MODULE(_lapis, m) {
   lapisRegisterAllPasses();
@@ -36,12 +34,10 @@ PYBIND11_MODULE(_lapis, m) {
       },
       py::arg("context"), py::arg("load") = true);
 
-
   auto passModule =
       m.def_submodule("passmanager", "MLIR Pass Management Bindings");
   lapis::python::populatePassManagerSubmodule(passModule);
 }
-
 
 using namespace mlir;
 using namespace mlir::python;
@@ -50,7 +46,7 @@ namespace {
 
 /// Owning Wrapper around a PassManager.
 class PyPassManager {
-public:
+ public:
   PyPassManager(MlirPassManager passManager) : passManager(passManager) {}
   PyPassManager(PyPassManager &&other) : passManager(other.passManager) {
     other.passManager.ptr = nullptr;
@@ -69,16 +65,15 @@ public:
 
   static pybind11::object createFromCapsule(pybind11::object capsule) {
     MlirPassManager rawPm = mlirPythonCapsuleToPassManager(capsule.ptr());
-    if (mlirPassManagerIsNull(rawPm))
-      throw py::error_already_set();
+    if (mlirPassManagerIsNull(rawPm)) throw py::error_already_set();
     return py::cast(PyPassManager(rawPm), py::return_value_policy::move);
   }
 
-private:
+ private:
   MlirPassManager passManager;
 };
 
-} // namespace
+}  // namespace
 
 /// Create the `mlir.passmanager` here.
 void lapis::python::populatePassManagerSubmodule(py::module &m) {
@@ -94,7 +89,7 @@ void lapis::python::populatePassManagerSubmodule(py::module &m) {
              return new PyPassManager(passManager);
            }),
            py::arg("anchor_op") = py::str("any"),
-           py::arg("context") = py::none(),
+           py::arg("context")   = py::none(),
            "Create a new PassManager for the current (or provided) Context.")
       .def_property_readonly(MLIR_PYTHON_CAPI_PTR_ATTR,
                              &PyPassManager::getCapsule)
@@ -147,8 +142,8 @@ void lapis::python::populatePassManagerSubmodule(py::module &m) {
       .def(
           "run",
           [](PyPassManager &passManager, MlirOperation &op) {
-            MlirLogicalResult status = mlirPassManagerRunOnOp(
-                passManager.get(), op);
+            MlirLogicalResult status =
+                mlirPassManagerRunOnOp(passManager.get(), op);
             if (mlirLogicalResultIsFailure(status))
               throw MLIRError("Failure while executing pass pipeline");
           },
@@ -157,24 +152,35 @@ void lapis::python::populatePassManagerSubmodule(py::module &m) {
           "MLIRError on failure.")
       .def(
           "emit_kokkos",
-          [](PyPassManager &passManager, PyModule &module, const char* cxxSourceFile, const char* pySourceFile) {
+          [](PyPassManager &passManager, PyModule &module,
+             const char *cxxSourceFile, const char *pySourceFile) {
             MlirLogicalResult status =
                 lapisEmitKokkos(module.get(), cxxSourceFile, pySourceFile);
             if (mlirLogicalResultIsFailure(status))
-              throw MLIRError("Failure while raising MLIR to Kokkos C++ source code.");
+              throw MLIRError(
+                  "Failure while raising MLIR to Kokkos C++ source code.");
           },
-          py::arg("module"), py::arg("cxx_source_file"), py::arg("py_source_file"),
-          "Emit Kokkos C++ and Python wrappers for the given module, and throw a RuntimeError on failure.")
+          py::arg("module"), py::arg("cxx_source_file"),
+          py::arg("py_source_file"),
+          "Emit Kokkos C++ and Python wrappers for the given module, and throw "
+          "a RuntimeError on failure.")
       .def(
           "emit_kokkos_sparse",
-          [](PyPassManager &passManager, PyModule &module, const char* cxxSourceFile, const char* pySourceFile, bool useHierarchical, bool isLastKernel) {
+          [](PyPassManager &passManager, PyModule &module,
+             const char *cxxSourceFile, const char *pySourceFile,
+             bool useHierarchical, bool isLastKernel) {
             MlirLogicalResult status =
-                lapisEmitKokkosSparse(module.get(), cxxSourceFile, pySourceFile, useHierarchical, isLastKernel);
+                lapisEmitKokkosSparse(module.get(), cxxSourceFile, pySourceFile,
+                                      useHierarchical, isLastKernel);
             if (mlirLogicalResultIsFailure(status))
-              throw MLIRError("Failure while raising MLIR to Kokkos C++ source code.");
+              throw MLIRError(
+                  "Failure while raising MLIR to Kokkos C++ source code.");
           },
-          py::arg("module"), py::arg("cxx_source_file"), py::arg("py_source_file"), py::arg("use_hierarchical"), py::arg("is_final_kernel"),
-          "Emit Kokkos C++ and Python wrappers for the given sparse module, and throw a RuntimeError on failure.")
+          py::arg("module"), py::arg("cxx_source_file"),
+          py::arg("py_source_file"), py::arg("use_hierarchical"),
+          py::arg("is_final_kernel"),
+          "Emit Kokkos C++ and Python wrappers for the given sparse module, "
+          "and throw a RuntimeError on failure.")
       .def(
           "__str__",
           [](PyPassManager &self) {
@@ -188,4 +194,3 @@ void lapis::python::populatePassManagerSubmodule(py::module &m) {
           "Print the textual representation for this PassManager, suitable to "
           "be passed to `parse` for round-tripping.");
 }
-
