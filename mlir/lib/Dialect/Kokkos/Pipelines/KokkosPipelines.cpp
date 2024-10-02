@@ -33,7 +33,6 @@ using namespace mlir::kokkos;
 // Pipeline implementation.
 //===----------------------------------------------------------------------===//
 
-// Not working yet: new Kokkos dialect based pipeline.
 void mlir::kokkos::buildSparseKokkosCompiler(
     OpPassManager &pm, const SparseCompilerOptions &options) {
 #ifdef ENABLE_PART_TENSOR
