@@ -872,52 +872,6 @@ LogicalResult PassManager::run(Operation *op) {
   return result;
 }
 
-LogicalResult PassManager::emitKokkos(Operation *op, const char* cxxSourceFile, const char* pySourceFile) {
-  MLIRContext *context = getContext();
-  assert(op->getName() == getOpName(*context) &&
-         "operation has a different name than the PassManager or is from a "
-         "different context");
-
-  // Register all dialects for the current pipeline.
-  DialectRegistry dependentDialects;
-  getDependentDialects(dependentDialects);
-  context->appendDialectRegistry(dependentDialects);
-  for (StringRef name : dependentDialects.getDialectNames())
-    context->getOrLoadDialect(name);
-
-  // Open the file for writing
-  std::error_code ec;
-  llvm::raw_fd_ostream cxxFileHandle(StringRef(cxxSourceFile), ec);
-  llvm::raw_fd_ostream pyFileHandle(StringRef(pySourceFile), ec);
-  LogicalResult result = kokkos::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ false);
-  pyFileHandle.close();
-  cxxFileHandle.close();
-  return result;
-}
-
-LogicalResult PassManager::emitKokkosSparse(Operation *op, const char* cxxSourceFile, const char* pySourceFile, bool useHierarchical, bool isLastKernel) {
-  MLIRContext *context = getContext();
-  assert(op->getName() == getOpName(*context) &&
-         "operation has a different name than the PassManager or is from a "
-         "different context");
-
-  // Register all dialects for the current pipeline.
-  DialectRegistry dependentDialects;
-  getDependentDialects(dependentDialects);
-  context->appendDialectRegistry(dependentDialects);
-  for (StringRef name : dependentDialects.getDialectNames())
-    context->getOrLoadDialect(name);
-
-  // Open the file for writing
-  std::error_code ec;
-  llvm::raw_fd_ostream cxxFileHandle(StringRef(cxxSourceFile), ec);
-  llvm::raw_fd_ostream pyFileHandle(StringRef(pySourceFile), ec);
-  LogicalResult result = kokkos::translateToKokkosCpp(op, cxxFileHandle, pyFileHandle, /* enableSparseSupport */ true, useHierarchical, isLastKernel);
-  pyFileHandle.close();
-  cxxFileHandle.close();
-  return result;
-}
-
 /// Add the provided instrumentation to the pass manager.
 void PassManager::addInstrumentation(std::unique_ptr<PassInstrumentation> pi) {
   if (!instrumentor)

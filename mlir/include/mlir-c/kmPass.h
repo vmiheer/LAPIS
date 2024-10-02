@@ -17,11 +17,11 @@ extern "C" {
 
 //MLIR_CAPI_EXPORTED 
 MlirLogicalResult
-mlirPassManagerEmitKokkos(MlirPassManager passManager, MlirModule module, const char* cxxSourceFile, const char* pySourceFile);
+lapisEmitKokkos(MlirModule module, const char* cxxSourceFile, const char* pySourceFile);
 
 //MLIR_CAPI_EXPORTED 
 MlirLogicalResult
-mlirPassManagerEmitKokkosSparse(MlirPassManager passManager, MlirModule module, const char* cxxSourceFile, const char* pySourceFile, bool useHierarchical, bool isLastKernel);
+lapisEmitKokkosSparse(MlirModule module, const char* cxxSourceFile, const char* pySourceFile, bool useHierarchical, bool isLastKernel);
 
 #ifdef __cplusplus
 }

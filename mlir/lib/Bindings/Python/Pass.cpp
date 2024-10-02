@@ -133,7 +133,7 @@ void mlir::python::populatePassManagerSubmodule(py::module &m) {
           "emit_kokkos",
           [](PyPassManager &passManager, PyModule &module, const char* cxxSourceFile, const char* pySourceFile) {
             MlirLogicalResult status =
-                mlirPassManagerEmitKokkos(passManager.get(), module.get(), cxxSourceFile, pySourceFile);
+                lapisEmitKokkos(passManager.get(), module.get(), cxxSourceFile, pySourceFile);
             if (mlirLogicalResultIsFailure(status))
               throw MLIRError("Failure while raising MLIR to Kokkos C++ source code.");
           },
@@ -143,7 +143,7 @@ void mlir::python::populatePassManagerSubmodule(py::module &m) {
           "emit_kokkos_sparse",
           [](PyPassManager &passManager, PyModule &module, const char* cxxSourceFile, const char* pySourceFile, bool useHierarchical, bool isLastKernel) {
             MlirLogicalResult status =
-                mlirPassManagerEmitKokkosSparse(passManager.get(), module.get(), cxxSourceFile, pySourceFile, useHierarchical, isLastKernel);
+                lapisEmitKokkosSparse(passManager.get(), module.get(), cxxSourceFile, pySourceFile, useHierarchical, isLastKernel);
             if (mlirLogicalResultIsFailure(status))
               throw MLIRError("Failure while raising MLIR to Kokkos C++ source code.");
           },
