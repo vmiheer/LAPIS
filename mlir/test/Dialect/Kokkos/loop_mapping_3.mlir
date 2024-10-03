@@ -29,7 +29,6 @@ module {
               %5 = arith.addf %arg8, %arg9 : f32
               scf.reduce.return %5 : f32
             }
-            scf.yield
           }
           memref.store %3, %arg1[%arg4, %arg5, %arg6] : memref<?x?x?xf32>
           scf.reduce(%3)  : f32 {
@@ -37,7 +36,6 @@ module {
             %4 = arith.addf %arg7, %arg8 : f32
             scf.reduce.return %4 : f32
           }
-          scf.yield
         }
         memref.store %2, %arg2[%arg4, %arg5] : memref<?x?xf32>
         scf.reduce(%2)  : f32 {
@@ -45,7 +43,6 @@ module {
           %3 = arith.addf %arg6, %arg7 : f32
           scf.reduce.return %3 : f32
         }
-        scf.yield
       }
       memref.store %1, %arg3[%arg4] : memref<?xf32>
       scf.reduce(%1)  : f32 {
@@ -53,7 +50,6 @@ module {
         %2 = arith.addf %arg5, %arg6 : f32
         scf.reduce.return %2 : f32
       }
-      scf.yield
     }
     return %0 : f32
   }

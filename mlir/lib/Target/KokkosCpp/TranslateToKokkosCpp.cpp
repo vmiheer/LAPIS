@@ -1,4 +1,4 @@
-//===- TranslateToKokkosCpp.cpp - Translat MLIR to Kokkos -----------------===//
+//===- TranslateToKokkosCpp.cpp - Translate MLIR to Kokkos -----------------===//
 //
 // **** This file has been modified from its original in llvm-project ****
 // This file was based on mlir/lib/Target/Cpp/TranslateToCpp.cpp
@@ -308,7 +308,7 @@ static LogicalResult printConstantOp(KokkosCppEmitter &emitter, Operation *opera
   OpResult result = operation->getResult(0);
 
   // Emit a variable declaration for an emitc.constant op without value.
-  if (auto oAttr = value.dyn_cast<emitc::OpaqueAttr>()) {
+  if (auto oAttr = dyn_cast<emitc::OpaqueAttr>(value)) {
     if (oAttr.getValue().empty())
       // The semicolon gets printed by the emitOperation function.
       return emitter.emitVariableDeclaration(result,
@@ -486,79 +486,37 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
 }
 */
 
-/*
-static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    gpu::AllocOp op) {
-  Operation *operation = op.getOperation();
-  OpResult result = operation->getResult(0);
-  // Register the result as being in Host memory
-  emitter.memrefSpaces[result] = MemSpace::Device;
-  MemRefType type = op.getType();
-  if (failed(emitter.emitMemrefType(op.getLoc(), type, MemSpace::Device)))
-    return failure();
-  emitter << " " << emitter.getOrCreateName(result);
-  emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << emitter.getOrCreateName(result) << "\")";
-  for(auto dynSize : op.getDynamicSizes())
-  {
-    emitter << ", ";
-    if(failed(emitter.emitValue(dynSize)))
-      return failure();
-  }
-  emitter << ")";
-  return success();
-}
-*/
-
-/*
-static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    gpu::DeallocOp op) {
-  // Assign an empty view
-  if(failed(emitter.emitValue(op.getMemref())))
-    return failure();
-  emitter << " = ";
-  if(failed(emitter.emitMemrefType(op.getLoc(), op.getMemref().getType(), MemSpace::Device)))
-    return failure();
-  emitter << "()";
-  return success();
-}
-*/
-
-/*
-static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    gpu::MemcpyOp op) {
-  if(emitter.isStridedSubview(op.getDst()) || emitter.isStridedSubview(op.getSrc()))
-  {
-    return op.emitError("strided subviews not supported yet in gpu.memcpy.");
-  }
-  emitter << "Kokkos::deep_copy(Kokkos::DefaultExecutionSpace(), ";
-  if(failed(emitter.emitValue(op.getDst())))
-    return failure();
-  emitter << ", ";
-  if(failed(emitter.emitValue(op.getSrc())))
-    return failure();
-  emitter << ")";
-  return success();
-}
-*/
-
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
                                     emitc::CallOp op) {
   if (failed(emitter.emitAssignPrefix(*op)))
     return failure();
-
   emitter << op.getCallee();
+  emitter << "(";
+  if (failed(emitter.emitOperands(*op)))
+    return failure();
+  emitter << ")";
+  return success();
+}
+
+static LogicalResult printOperation(KokkosCppEmitter &emitter,
+                                    emitc::CallOpaqueOp callOpaqueOp) {
+  Operation &op = *callOpaqueOp.getOperation();
+  auto& os = emitter.ostream();
+
+  if (failed(emitter.emitAssignPrefix(op)))
+    return failure();
+  emitter << callOpaqueOp.getCallee();
 
   auto emitArgs = [&](Attribute attr) -> LogicalResult {
     if (auto t = dyn_cast<IntegerAttr>(attr)) {
       // Index attributes are treated specially as operand index.
       if (t.getType().isIndex()) {
         int64_t idx = t.getInt();
-        if ((idx < 0) || (idx >= op.getNumOperands()))
-          return op.emitOpError("invalid operand index");
-        if (!emitter.hasValueInScope(op.getOperand(idx)))
+        Value operand = op.getOperand(idx);
+        if (!emitter.hasValueInScope(operand))
           return op.emitOpError("operand ")
                  << idx << "'s value not defined in scope";
-        emitter << emitter.getOrCreateName(op.getOperand(idx));
+        emitter << emitter.getOrCreateName(operand);
         return success();
       }
     }
@@ -568,10 +526,10 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
     return success();
   };
 
-  if (op.getTemplateArgs()) {
+  if (callOpaqueOp.getTemplateArgs()) {
     emitter << "<";
-    if (failed(
-            interleaveCommaWithError(*op.getTemplateArgs(), emitter.ostream(), emitArgs)))
+    if (failed(interleaveCommaWithError(*callOpaqueOp.getTemplateArgs(), os,
+                                        emitArgs)))
       return failure();
     emitter << ">";
   }
@@ -579,9 +537,9 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << "(";
 
   LogicalResult emittedArgs =
-      op.getArgs()
-          ? interleaveCommaWithError(*op.getArgs(), emitter.ostream(), emitArgs)
-          : emitter.emitOperands(*op);
+      callOpaqueOp.getArgs()
+          ? interleaveCommaWithError(*callOpaqueOp.getArgs(), os, emitArgs)
+          : emitter.emitOperands(op);
   if (failed(emittedArgs))
     return failure();
   emitter << ")";
@@ -839,7 +797,46 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   emitter << ' ' << emitter.getOrCreateName(sIToFPOp.getOut()) << " = ";
   if(failed(emitter.emitValue(sIToFPOp.getIn())))
     return failure();
-  emitter << ";\n";
+  return success();
+}
+
+static LogicalResult printOperation(KokkosCppEmitter &emitter,
+                                    arith::MinNumFOp op) {
+  if(failed(emitter.emitAssignPrefix(*op)))
+    return failure();
+  emitter << "Kokkos::isnan(";
+  if(failed(emitter.emitValue(op.getLhs())))
+    return failure();
+  emitter << ") ? ";
+  if(failed(emitter.emitValue(op.getRhs())))
+    return failure();
+  emitter << " : Kokkos::min(";
+  if(failed(emitter.emitValue(op.getLhs())))
+    return failure();
+  emitter << ", ";
+  if(failed(emitter.emitValue(op.getRhs())))
+    return failure();
+  emitter << ")";
+  return success();
+}
+
+static LogicalResult printOperation(KokkosCppEmitter &emitter,
+                                    arith::MaxNumFOp op) {
+  if(failed(emitter.emitAssignPrefix(*op)))
+    return failure();
+  emitter << "Kokkos::isnan(";
+  if(failed(emitter.emitValue(op.getLhs())))
+    return failure();
+  emitter << ") ? ";
+  if(failed(emitter.emitValue(op.getRhs())))
+    return failure();
+  emitter << " : Kokkos::max(";
+  if(failed(emitter.emitValue(op.getLhs())))
+    return failure();
+  emitter << ", ";
+  if(failed(emitter.emitValue(op.getRhs())))
+    return failure();
+  emitter << ")";
   return success();
 }
 
@@ -1003,7 +1000,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, scf::ForOp forOp)
 
   raw_indented_ostream &os = emitter.ostream();
 
-  OperandRange operands = forOp.getIterOperands();
+  OperandRange operands = forOp.getInitArgs();
   Block::BlockArgListType iterArgs = forOp.getRegionIterArgs();
   Operation::result_range results = forOp.getResults();
 
@@ -1234,11 +1231,11 @@ static bool isBuiltinReduction(std::string& reduction, kokkos::UpdateReductionOp
   // These have different behavior with respect to NaNs: maximumf(nan, a) = nan, but maxnumf(nan, a) = a.
   // The latter is not what Kokkos::Max will do, so it would have to use a custom reducer.
   //else if(isa<arith::MaximumFOp>(op1) {
-  else if(isa<arith::MaxFOp>(op1)) {
+  else if(isa<arith::MaximumFOp>(op1)) {
     reduction = "Kokkos::Max";
     return true;
   }
-  else if(isa<arith::MinFOp>(op1)) {
+  else if(isa<arith::MinimumFOp>(op1)) {
   //else if(isa<arith::MinimumFOp>(op1)) {
     reduction = "Kokkos::Min";
     return true;
@@ -2059,7 +2056,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     if(i != 0)
       os << ", ";
     auto retType = ftype.getResult(i);
-    if(auto memrefType = retType.dyn_cast<MemRefType>())
+    if(auto memrefType = dyn_cast<MemRefType>(retType))
     {
       //This is represented using a pointer to the element type
       if(failed(emitter.emitType(functionOp.getLoc(), memrefType.getElementType())))
@@ -2080,7 +2077,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     if(i != 0 || numResults)
       os << ", ";
     auto paramType = ftype.getInput(i);
-    if(auto memrefType = paramType.dyn_cast<MemRefType>())
+    if(auto memrefType = dyn_cast<MemRefType>(paramType))
     {
       if(emitter.supportingSparse())
       {
@@ -2120,7 +2117,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     for(size_t i = 0; i < numParams; i++)
     {
       auto paramType = ftype.getInput(i);
-      if(auto memrefType = paramType.dyn_cast<MemRefType>())
+      if(auto memrefType = dyn_cast<MemRefType>(paramType))
       {
         int64_t span = KokkosCppEmitter::getMemrefSpan(memrefType);
         os << "Kokkos::View<";
@@ -2143,7 +2140,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     if(i != 0)
       os << ", ";
     auto paramType = ftype.getInput(i);
-    auto memrefType = paramType.dyn_cast<MemRefType>();
+    auto memrefType = dyn_cast<MemRefType>(paramType);
     if(!emitter.supportingSparse() && memrefType)
     {
       //TODO: handle dynamic sized and unranked memrefs here
@@ -2165,7 +2162,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     if(i != 0)
       os << ", ";
     auto retType = ftype.getResult(i);
-    auto memrefType = retType.dyn_cast<MemRefType>();
+    auto memrefType = dyn_cast<MemRefType>(retType);
     if(memrefType && !emitter.supportingSparse())
     {
       int64_t span = KokkosCppEmitter::getMemrefSpan(memrefType);
@@ -2253,10 +2250,10 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
   for(size_t i = 0; i < numParams; i++)
   {
     auto paramType = ftype.getInput(i);
-      if(!paramType.isa<LLVM::LLVMPointerType>())
+      if(!isa<LLVM::LLVMPointerType>(paramType))
       {
         py_os << "param" << i << " = ";
-        if(auto memrefType = paramType.dyn_cast<MemRefType>())
+        if(auto memrefType = dyn_cast<MemRefType>(paramType))
         {
           std::string numpyDType = getNumpyType(memrefType.getElementType());
           if(!numpyDType.size())
@@ -2281,7 +2278,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
   {
     auto retType = ftype.getResult(i);
     //TODO: support returning a StridedMemRefType for PyTACO
-    if(auto memrefType = retType.dyn_cast<MemRefType>())
+    if(auto memrefType = dyn_cast<MemRefType>(retType))
     {
       std::string numpyDType = getNumpyType(memrefType.getElementType());
       if(!numpyDType.size())
@@ -2296,7 +2293,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
       }
       py_os << "), dtype=" << numpyDType << ")\n";
     }
-    else if(retType.isa<LLVM::LLVMPointerType>())
+    else if(isa<LLVM::LLVMPointerType>(retType))
     {
       //For pointer results, declare a void* and pass its address (void**)
       py_os << "ret" << i << " = ctypes.pointer(ctypes.pointer(ctypes.c_char(0)))\n";
@@ -2318,7 +2315,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     auto retType = ftype.getResult(i);
     if(i != 0)
       py_os << ", ";
-    if(retType.isa<LLVM::LLVMPointerType>())
+    if(isa<LLVM::LLVMPointerType>(retType))
     {
       // Pointer
       py_os << "ctypes.pointer(ret" << i << ")";
@@ -2336,7 +2333,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
     {
       py_os << ", ";
     }
-    if(paramType.isa<LLVM::LLVMPointerType>() || emitter.supportingSparse())
+    if(isa<LLVM::LLVMPointerType>(paramType) || emitter.supportingSparse())
     {
       py_os << "param" << i;
     }
@@ -2356,7 +2353,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, func::FuncOp func
       if(i != 0)
         py_os << ", ";
       auto retType = ftype.getResult(i);
-      if(retType.isa<MemRefType>() || retType.isa<LLVM::LLVMPointerType>())
+      if(isa<MemRefType, LLVM::LLVMPointerType>(retType))
       {
         //Return the whole memref
         py_os << "ret" << i;
@@ -2526,11 +2523,11 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
   };
 
   // Print floating point attributes.
-  if (auto fAttr = attr.dyn_cast<FloatAttr>()) {
+  if (auto fAttr = dyn_cast<FloatAttr>(attr)) {
     printFloat(fAttr.getValue());
     return success();
   }
-  if (auto dense = attr.dyn_cast<DenseFPElementsAttr>()) {
+  if (auto dense = dyn_cast<DenseFPElementsAttr>(attr)) {
     os << '{';
     interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
     os << '}';
@@ -2538,21 +2535,18 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
   }
 
   // Print integer attributes.
-  if (auto iAttr = attr.dyn_cast<IntegerAttr>()) {
-    if (auto iType = iAttr.getType().dyn_cast<IntegerType>()) {
+  if (auto iAttr = dyn_cast<IntegerAttr>(attr)) {
+    if (auto iType = dyn_cast<IntegerType>(iAttr.getType())) {
       printInt(iAttr.getValue(), shouldMapToUnsigned(iType.getSignedness()));
       return success();
     }
-    if (auto iType = iAttr.getType().dyn_cast<IndexType>()) {
+    if (auto iType = dyn_cast<IndexType>(iAttr.getType())) {
       printInt(iAttr.getValue(), false);
       return success();
     }
   }
-  if (auto dense = attr.dyn_cast<DenseIntElementsAttr>()) {
-    if (auto iType = dense.getType()
-                         .cast<TensorType>()
-                         .getElementType()
-                         .dyn_cast<IntegerType>()) {
+  if (auto dense = dyn_cast<DenseIntElementsAttr>(attr)) {
+    if (auto iType = dyn_cast<IntegerType>(cast<TensorType>(dense.getType()).getElementType())) {
       os << '{';
       interleaveComma(dense, os, [&](const APInt &val) {
         printInt(val, shouldMapToUnsigned(iType.getSignedness()));
@@ -2560,10 +2554,7 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
       os << '}';
       return success();
     }
-    if (auto iType = dense.getType()
-                         .cast<TensorType>()
-                         .getElementType()
-                         .dyn_cast<IndexType>()) {
+    if (auto iType = dyn_cast<IndexType>(cast<TensorType>(dense.getType()).getElementType())) {
       os << '{';
       interleaveComma(dense, os,
                       [&](const APInt &val) { printInt(val, false); });
@@ -2573,7 +2564,7 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
   }
 
   // Print symbolic reference attributes.
-  if (auto sAttr = attr.dyn_cast<SymbolRefAttr>()) {
+  if (auto sAttr = dyn_cast<SymbolRefAttr>(attr)) {
     if (sAttr.getNestedReferences().size() > 1)
       return emitError(loc, "attribute has more than 1 nested reference");
     os << sAttr.getRootReference().getValue();
@@ -2581,7 +2572,7 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
   }
 
   // Print string attribute (including quotes). Using hex of each character so that special characters don't need escaping.
-  if (auto strAttr = attr.dyn_cast<StringAttr>())
+  if (auto strAttr = dyn_cast<StringAttr>(attr))
   {
     os << '"';
     auto val = strAttr.strref();
@@ -2596,7 +2587,7 @@ LogicalResult KokkosCppEmitter::emitAttribute(Location loc, Attribute attr) {
   }
 
   // Print type attributes.
-  if (auto type = attr.dyn_cast<TypeAttr>())
+  if (auto type = dyn_cast<TypeAttr>(attr))
     return emitType(loc, type.getValue());
 
   return emitError(loc, "cannot emit attribute of unsupported type");
@@ -3149,15 +3140,10 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, math::RsqrtOp op)
 }
 
 static LogicalResult printOperation(KokkosCppEmitter &emitter,
-                                    LLVM::NullOp op) {
-  // Make sure the result type is a pointer (raw, not a memref).
-  // Emit this is a raw null pointer, not an unallocated Kokkos::View
-  if (!op.getResult().getType().isa<LLVM::LLVMPointerType>()) {
-    return op.emitOpError("LLVM::NullOp has a non-pointer result type");
-  }
+                                    LLVM::ZeroOp op) {
   if(failed(emitter.emitType(op.getLoc(), op.getResult().getType())))
     return failure();
-  emitter << ' ' << emitter.getOrCreateName(op.getResult()) << " = nullptr";
+  emitter << ' ' << emitter.getOrCreateName(op.getResult()) << " = 0";
   return success();
 }
 
@@ -3187,7 +3173,7 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
           .Case<scf::ForOp, scf::WhileOp, scf::IfOp, scf::YieldOp, scf::ConditionOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Arithmetic ops: general
-          .Case<arith::ConstantOp, arith::FPToUIOp, arith::NegFOp, arith::CmpFOp, arith::CmpIOp, arith::SelectOp, arith::IndexCastOp, arith::SIToFPOp>(
+          .Case<arith::ConstantOp, arith::FPToUIOp, arith::NegFOp, arith::CmpFOp, arith::CmpIOp, arith::SelectOp, arith::IndexCastOp, arith::SIToFPOp, arith::MinNumFOp, arith::MaxNumFOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Arithmetic ops: standard binary infix operators. All have the same syntax "result = lhs <operator> rhs;".
           // ArithBinaryInfixOperator<Op>::get() will provide the <operator>.
@@ -3197,9 +3183,9 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
           .Case<arith::UIToFPOp, arith::FPToSIOp, arith::TruncFOp, arith::ExtFOp, arith::ExtSIOp, arith::ExtUIOp>(
               [&](auto op) { return printImplicitConversionOperation(*this, op); })
           // Arithmetic ops: min/max expressed using ternary operator.
-          .Case<arith::MinFOp>(
+          .Case<arith::MinimumFOp>(
               [&](auto op) { return printFloatMinMax(*this, op, "<"); })
-          .Case<arith::MaxFOp>(
+          .Case<arith::MaximumFOp>(
               [&](auto op) { return printFloatMinMax(*this, op, ">"); })
           .Case<arith::MinSIOp>(
               [&](auto op) { return printIntMinMax(*this, op, "<", false); })
@@ -3223,10 +3209,10 @@ LogicalResult KokkosCppEmitter::emitOperation(Operation &op, bool trailingSemico
                 memref::ReinterpretCastOp*/>(
               [&](auto op) { return printOperation(*this, op); })
           // EmitC ops.
-          .Case<emitc::CallOp>(
+          .Case<emitc::CallOp, emitc::CallOpaqueOp>(
               [&](auto op) { return printOperation(*this, op); })
           // LLVM ops.
-          .Case<LLVM::NullOp>(
+          .Case<LLVM::ZeroOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Other operations are unknown/unsupported.
           .Default([&](Operation *) {
@@ -3256,7 +3242,7 @@ LogicalResult KokkosCppEmitter::emitInitAndFinalize()
     if(failed(emitType(op.getLoc(), op.getType())))
       return failure();
     //TODO: handle dynamic sized view here? This assumes all compile time sizes.
-    MemRefType type = op.getType().cast<MemRefType>();
+    MemRefType type = cast<MemRefType>(op.getType());
     os << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << op.getSymName() << "\"));\n";
     auto maybeValue = op.getInitialValue();
     if(maybeValue)
@@ -3318,7 +3304,7 @@ LogicalResult KokkosCppEmitter::emitPythonBoilerplate(bool isLastKernel)
 }
 
 LogicalResult KokkosCppEmitter::emitType(Location loc, Type type, bool forSparseRuntime) {
-  if (auto iType = type.dyn_cast<IntegerType>()) {
+  if (auto iType = dyn_cast<IntegerType>(type)) {
     switch (iType.getWidth()) {
     case 1:
       return (os << "bool"), success();
@@ -3334,7 +3320,7 @@ LogicalResult KokkosCppEmitter::emitType(Location loc, Type type, bool forSparse
       return emitError(loc, "cannot emit integer type ") << type;
     }
   }
-  if (auto fType = type.dyn_cast<FloatType>()) {
+  if (auto fType = dyn_cast<FloatType>(type)) {
     switch (fType.getWidth()) {
     case 32:
       return (os << "float"), success();
@@ -3344,27 +3330,14 @@ LogicalResult KokkosCppEmitter::emitType(Location loc, Type type, bool forSparse
       return emitError(loc, "cannot emit float type ") << type;
     }
   }
-  if (auto iType = type.dyn_cast<IndexType>())
+  if (auto iType = dyn_cast<IndexType>(type))
     return (os << "size_t"), success();
-  if (auto tType = type.dyn_cast<TensorType>()) {
-    if (!tType.hasRank())
-      return emitError(loc, "cannot emit unranked tensor type");
-    if (!tType.hasStaticShape())
-      return emitError(loc, "cannot emit tensor type with non static shape");
-    os << "Tensor<";
-    if (failed(emitType(loc, tType.getElementType())))
-      return failure();
-    auto shape = tType.getShape();
-    for (auto dimSize : shape) {
-      os << ", ";
-      os << dimSize;
-    }
-    os << ">";
-    return success();
+  if (auto tType = dyn_cast<TensorType>(type)) {
+    return emitError(loc, "cannot directly emit tensor type, should be lowered to memref");
   }
-  if (auto tType = type.dyn_cast<TupleType>())
+  if (auto tType = dyn_cast<TupleType>(type))
     return emitTupleType(loc, tType.getTypes());
-  if (auto mrType = type.dyn_cast<MemRefType>()) {
+  if (auto mrType = dyn_cast<MemRefType>(type)) {
     if (forSparseRuntime) {
       os << "StridedMemRefType<";
       if (failed(emitType(loc, mrType.getElementType())))
@@ -3377,13 +3350,12 @@ LogicalResult KokkosCppEmitter::emitType(Location loc, Type type, bool forSparse
     }
     return success();
   }
-  if (auto mrType = type.dyn_cast<UnrankedMemRefType>()) {
+  if (auto mrType = dyn_cast<UnrankedMemRefType>(type)) {
     return emitMemrefType(loc, mrType, kokkos::MemorySpace::Host);
   }
-  if (auto mrType = type.dyn_cast<LLVM::LLVMPointerType>()) {
-    if (failed(emitType(loc, mrType.getElementType())))
-      return failure();
-    os << "*";
+  if (auto pType = dyn_cast<LLVM::LLVMPointerType>(type)) {
+    // LLVMPointerType is untyped
+    os << "void*";
     return success();
   }
   return emitError(loc, "cannot emit type ") << type << "\n";

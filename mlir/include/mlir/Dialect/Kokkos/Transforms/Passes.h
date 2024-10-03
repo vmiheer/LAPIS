@@ -31,11 +31,6 @@ std::unique_ptr<Pass> createKokkosMemorySpaceAssignmentPass();
 
 std::unique_ptr<Pass> createKokkosDualViewManagementPass();
 
-// Old Kokkos codegen for kernel outlining and host-device copying
-// (does not use the ops in Kokkos dialect)
-void populateSparseKokkosCodegenPatterns(RewritePatternSet &patterns);
-std::unique_ptr<Pass> createSparseKokkosCodegenPass();
-
 //===----------------------------------------------------------------------===//
 // Registration.
 //===----------------------------------------------------------------------===//

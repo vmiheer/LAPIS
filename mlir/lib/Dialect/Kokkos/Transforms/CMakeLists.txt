@@ -4,7 +4,6 @@ add_mlir_dialect_library(MLIRKokkosTransforms
   KokkosLoopMapping.cpp
   KokkosMemorySpaceAssignment.cpp
   KokkosDualViewManagement.cpp
-  SparseKokkosCodegen.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/Kokkos

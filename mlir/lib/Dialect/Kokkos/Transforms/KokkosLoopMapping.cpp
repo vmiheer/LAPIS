@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CodegenUtils.h"
-
 #include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
 #include "mlir/Dialect/Kokkos/Transforms/Passes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -121,11 +119,11 @@ scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
           if (isa<scf::YieldOp>(oldOp))
             continue;
           else if (auto reduce = dyn_cast<scf::ReduceOp>(oldOp)) {
-            // TODO: when LLVM is updated, this should be modified to support
-            // arbitrary number of reductions The basic structure is the same,
+            // TODO: this should be modified to support an
+            // arbitrary number of reductions. The basic structure is the same,
             // but now the reduce can have N operands and N regions, each doing
             // one join
-            Value valToJoin = irMap.lookupOrDefault(reduce.getOperand());
+            Value valToJoin = irMap.lookupOrDefault(reduce.getOperand(0));
             Value partialReduction = args[0];
             for (Region &reduceRegion : reduce->getRegions()) {
               Block &reduceBlock = reduceRegion.front();
@@ -166,9 +164,10 @@ void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap, V
   if(isa<scf::YieldOp>(op))
     return;
   else if(scf::ReduceOp reduce = dyn_cast<scf::ReduceOp>(op)) {
-    kokkos::UpdateReductionOp newReduce = rewriter.create<kokkos::UpdateReductionOp>(reduce->getLoc(), irMap.lookupOrDefault(reduce.getOperand()), irMap.lookupOrDefault(reduceIdentity));
+    //TODO: support multiple reductions here!
+    kokkos::UpdateReductionOp newReduce = rewriter.create<kokkos::UpdateReductionOp>(reduce->getLoc(), irMap.lookupOrDefault(reduce.getOperand(0)), irMap.lookupOrDefault(reduceIdentity));
     // Map (old to new) the two reduce block arguments
-    Block& oldReduceBlock = reduce.getReductionOperator().front();
+    Block& oldReduceBlock = reduce.getReductions()[0].front();
     Block& newReduceBlock = newReduce.getReductionOperator().front();
     for (auto p : llvm::zip(oldReduceBlock.getArguments(), newReduceBlock.getArguments())) {
       irMap.map(std::get<0>(p), std::get<1>(p));

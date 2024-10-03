@@ -26,7 +26,7 @@ module {
         scf.yield
       }
       memref.store %4, %arg0[%arg4, %arg4, %arg4] : memref<?x?x?xf64>
-      scf.yield
+      scf.reduce
     }
     return
   }

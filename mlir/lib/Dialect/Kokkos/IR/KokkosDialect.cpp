@@ -76,7 +76,9 @@ void RangeParallelOp::build(
   RangeParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-Region &RangeParallelOp::getLoopBody() { return getRegion(); }
+SmallVector<Region*> RangeParallelOp::getLoopRegions() {
+  return SmallVector<Region*>(1, &getRegion());
+}
 
 ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
@@ -222,7 +224,9 @@ void TeamParallelOp::build(
   TeamParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-Region &TeamParallelOp::getLoopBody() { return getRegion(); }
+SmallVector<Region*> TeamParallelOp::getLoopRegions() {
+  return SmallVector<Region*>(1, &getRegion());
+}
 
 /*
 ParseResult TeamParallelOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -399,7 +403,9 @@ void ThreadParallelOp::build(
   ThreadParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-Region &ThreadParallelOp::getLoopBody() { return getRegion(); }
+SmallVector<Region*> ThreadParallelOp::getLoopRegions() {
+  return SmallVector<Region*>(1, &getRegion());
+}
 
 void ThreadParallelOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
   // Both the operation itself and the region may be branching into the body or

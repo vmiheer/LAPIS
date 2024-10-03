@@ -26,10 +26,9 @@ module {
           %11 = arith.addf %arg7, %arg8 : f64
           scf.reduce.return %11 : f64
         }
-        scf.yield
       }
       memref.store %5, %arg0[%arg5] : memref<?xf64>
-      scf.yield
+      scf.reduce
     }
     return
   }

@@ -14,7 +14,7 @@ module {
         memref.store %cPI, %alloc[%k] : memref<?xf32>
         scf.yield
       }
-      scf.yield
+      scf.reduce
     }
     return
   }

@@ -6,8 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CodegenUtils.h"
-
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
@@ -28,7 +26,7 @@ bool valueIsIntegerConstantZero(Value v)
     return false;
   if (auto constantOp = dyn_cast<arith::ConstantOp>(v.getDefiningOp())) {
     auto valAttr = constantOp.getValue();
-    if (auto iAttr = valAttr.dyn_cast<IntegerAttr>()) {
+    if (auto iAttr = dyn_cast<IntegerAttr>(valAttr)) {
       return iAttr.getValue().isZero();
     }
     return false;
@@ -44,7 +42,7 @@ bool valueIsIntegerConstantOne(Value v)
     return false;
   if (auto constantOp = dyn_cast<arith::ConstantOp>(v.getDefiningOp())) {
     auto valAttr = constantOp.getValue();
-    if (auto iAttr = valAttr.dyn_cast<IntegerAttr>()) {
+    if (auto iAttr = dyn_cast<IntegerAttr>(valAttr)) {
       return iAttr.getValue().isOne();
     }
     return false;
@@ -112,7 +110,7 @@ struct ParallelUnitStepRewriter : public OpRewritePattern<scf::ParallelOp> {
     }
     // Now go into the loop body and compute a mapping from new to old induction variable,
     // and replace all usages of the induction variable with this.
-    auto& body = op.getLoopBody();
+    auto& body = op.getRegion();
     rewriter.setInsertionPointToStart(&body.front());
     for(int i = 0; i < n; i++) {
       Value oldLower = op.getLowerBound()[i];
@@ -129,15 +127,11 @@ struct ParallelUnitStepRewriter : public OpRewritePattern<scf::ParallelOp> {
       Value inductionReplacement = rewriter.create<arith::AddIOp>(op.getLoc(), oldLower, replacementException.getResult()).getResult();
       rewriter.replaceAllUsesExcept(induction, inductionReplacement, replacementException);
     }
-    //TODO: they renamed this to startOpModification in upstream
-    rewriter.startRootUpdate(op);
-    //rewriter.startOpModification(op);
+    rewriter.startOpModification(op);
     op.getLowerBoundMutable().assign(newLowers);
     op.getUpperBoundMutable().assign(newUppers);
     op.getStepMutable().assign(newSteps);
-    //TODO: they renamed this to finalizeOpModification upstream
-    rewriter.finalizeRootUpdate(op);
-    //rewriter.finalizeOpModification(op);
+    rewriter.finalizeOpModification(op);
     return success();
   }
 };

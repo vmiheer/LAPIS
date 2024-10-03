@@ -11,7 +11,7 @@ module {
         %1 = arith.addi %arg2, %arg3 : index
         scf.reduce.return %1 : index
       }
-      scf.yield
+      scf.reduce
     }
     return %0 : index
   }
