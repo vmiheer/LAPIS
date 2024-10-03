@@ -17,6 +17,7 @@ add_mlir_dialect_library(MLIRKokkosTransforms
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
   MLIRComplexDialect
+  MLIREmitCDialect
   MLIRFuncDialect
   MLIRIR
   MLIRLLVMDialect

@@ -11,13 +11,20 @@ import subprocess
 from io import StringIO
 import tempfile
 
+print("YOOOOOO")
+print("Module path: ")
 from .._mlir_libs._lapis import register_dialect
 
+print("YOOOOOO 2")
 from lapis.tools import mlir_pytaco_api as pt
+print("YOOOOOO 3")
 from lapis.tools import mlir_pytaco
-from lapis._mlir_libs._mlir import ir
-from lapis._mlir_libs._lapis import passmanager
+print("YOOOOOO 4")
+from mlir import ir
+print("YOOOOOO 5")
+from mlir import passmanager
 
+print("YOOOOOO 6")
 from .abc import LinalgKokkosBackend
 
 __all__ = [

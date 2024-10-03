@@ -29,22 +29,35 @@ import operator
 import os
 import threading
 
+print("Importing all pytaco mlir deps")
 # Import MLIR related modules.
-from lapis import execution_engine
-from lapis._mlir_libs._mlir import ir
-from lapis import runtime
-from lapis.dialects import arith
-from lapis.dialects import bufferization
-from lapis.dialects import builtin
-from lapis.dialects import func
-from lapis.dialects import linalg
-from lapis.dialects import sparse_tensor
-from lapis.dialects import tensor
-from lapis.dialects.linalg.opdsl import lang
+print("Importing execution_engine...")
+from mlir import execution_engine
+print("Importing ir...") 
+from mlir._mlir_libs._mlir import ir
+print("Importing dialects...") 
+print("arith") 
+from mlir.dialects import arith
+print("buff") 
+from mlir.dialects import bufferization
+print("builtin") 
+from mlir.dialects import builtin
+print("func") 
+from mlir.dialects import func
+print("linalg") 
+from mlir.dialects import linalg
+print("sparse_tensor") 
+from mlir.dialects import sparse_tensor
+print("tensor") 
+from mlir.dialects import tensor
+print("opdsl") 
+from mlir.dialects.linalg.opdsl import lang
 
+print("utils") 
 from . import mlir_pytaco_utils as utils
 
 # Import Kokkos pipeline
+print("Importing KokkosBackend...") 
 from lapis.linalg_kokkos_backend import KokkosBackend
 
 # TACO naming prefixes.

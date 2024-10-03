@@ -2,7 +2,6 @@
 #define LAPIS_C_DIALECTS_H
 
 #include "mlir-c/IR.h"
-//#include "mlir-c/Dialects.h"
 
 #ifdef __cplusplus
 extern "C" {

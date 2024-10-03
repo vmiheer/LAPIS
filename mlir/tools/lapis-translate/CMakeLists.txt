@@ -16,7 +16,6 @@ target_link_libraries(lapis-translate
   ${test_libs}
   MLIRIR
   MLIRParser
-  LAPISPass
   MLIRSPIRVDialect
   MLIRTranslateLib
   MLIRSupport

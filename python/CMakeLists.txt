@@ -26,7 +26,6 @@ declare_mlir_python_sources(LapisPythonSources.linalg_kokkos_backend
   SOURCES
     linalg_kokkos_backend/abc.py
     linalg_kokkos_backend/KokkosBackend.py
-    linalg_kokkos_backend/KokkosBackendJustMLIRDump.py
 )
 
 declare_mlir_python_sources(LapisPythonSources.tools
@@ -58,8 +57,9 @@ declare_mlir_python_extension(LapisPythonExtensions.Main
 
 target_include_directories(LapisPythonExtensions.Main INTERFACE
   $<BUILD_INTERFACE:${LAPIS_SOURCE_DIR}/mlir/include>
-  $<BUILD_INTERFACE:${LAPIS_BINARY_DIR}/mlir/include>)
-target_link_libraries(LapisPythonExtensions.Main INTERFACE MLIRPythonExtension.Core LAPISCAPIIR)
+  $<BUILD_INTERFACE:${LAPIS_BINARY_DIR}/mlir/include>
+  ${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core)
+target_link_libraries(LapisPythonExtensions.Main INTERFACE MLIRPythonExtension.Core LapisCAPI)
 
 ################################################################################
 # Generate packages and shared library
@@ -93,7 +93,6 @@ target_link_libraries(
   LapisAggregateCAPI
   PUBLIC
   LapisCAPI
-  LAPISCAPIIR
 )
 
 add_mlir_python_modules(LapisPythonModules
