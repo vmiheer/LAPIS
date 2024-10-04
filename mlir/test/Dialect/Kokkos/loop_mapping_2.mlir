@@ -21,7 +21,7 @@ module {
         %8 = memref.load %arg3[%6] : memref<?xf64>
         %9 = memref.load %arg4[%7] : memref<?xf64>
         %10 = arith.mulf %8, %9 : f64
-        scf.reduce(%10)  : f64 {
+        scf.reduce(%10 : f64) {
         ^bb0(%arg7: f64, %arg8: f64):
           %11 = arith.addf %arg7, %arg8 : f64
           scf.reduce.return %11 : f64

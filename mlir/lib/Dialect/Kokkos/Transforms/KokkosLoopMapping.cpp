@@ -21,7 +21,7 @@ namespace {
 // Get the number of parallel nesting levels for the given ParallelOp
 // - The op itself counts as 1
 // - Each additional nesting level counts as another
-int getParallelNumLevels(scf::ParallelOp op) {
+static int getParallelNumLevels(scf::ParallelOp op) {
   // selfDepth will be the nesting depth of op itself
   // (if it has no scf.parallel parents, this is 0)
   int selfDepth = 0;
@@ -98,13 +98,17 @@ Value buildIndexProduct(Location loc, RewriterBase &rewriter, ValRange vals) {
 // rank is a block argument and other values can be computed based on that), but
 // Kokkos dialect code lowered from SCF (everything handled by this pass) can
 // never do that.
-bool opNeedsSingle(Operation *op) {
+static bool opNeedsSingle(Operation *op) {
   return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op) || isa<kokkos::UpdateReductionOp>(op);
 }
 
-scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
+static LogicalResult scfParallelToSequential(scf::ForOp& newOp, RewriterBase &rewriter, scf::ParallelOp op) {
   using ValueVector = SmallVector<Value>;
   rewriter.setInsertionPoint(op);
+  // TODO: support > 1 reductions here.
+  int numReductions = op.getNumReductions();
+  if(numReductions > 1)
+    return op.emitError("Only support translating scf.parallel with 0 or 1 reductions.");
   scf::LoopNest newLoopNest = scf::buildLoopNest(
       rewriter, op.getLoc(), op.getLowerBound(), op.getUpperBound(),
       op.getStep(), op.getInitVals(),
@@ -116,9 +120,10 @@ scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
           irMap.map(std::get<0>(p), std::get<1>(p));
         }
         for (Operation &oldOp : op.getBody()->getOperations()) {
-          if (isa<scf::YieldOp>(oldOp))
-            continue;
-          else if (auto reduce = dyn_cast<scf::ReduceOp>(oldOp)) {
+          if (auto reduce = dyn_cast<scf::ReduceOp>(oldOp)) {
+            // Reduce with 0 operands is just a simple terminator
+            if(reduce.getNumOperands() == 0)
+              continue;
             // TODO: this should be modified to support an
             // arbitrary number of reductions. The basic structure is the same,
             // but now the reduce can have N operands and N regions, each doing
@@ -149,21 +154,28 @@ scf::ForOp scfParallelToSequential(RewriterBase &rewriter, scf::ParallelOp op) {
         }
         return results;
       });
-  scf::ForOp newOp = newLoopNest.loops.front();
+  newOp = newLoopNest.loops.front();
   rewriter.replaceOp(op, newOp);
-  return newOp;
+  return success();
 }
 
 // Clone the given operation into a new Kokkos parallel loop.
 // Assume that the rewriter's insertion position is already in the right place.
-// This is mostly a standard clone except:
-// - scf.yield is not cloned at all
-// - scf.reduce is converted into a kokkos.reduce
+// This is mostly a standard clone except for scf.reduce:
+// - with 0 operands (simple terminator) is not copied.
+//   This is because kokkos.yield is inserted automatically to the end of each loop body.
+// - with 1 operand is converted into a kokkos.update_reduction
 //   - and inside the reduce, scf.reduce.return is converted to kokkos.yield
-void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap, Value reduceIdentity) {
-  if(isa<scf::YieldOp>(op))
-    return;
-  else if(scf::ReduceOp reduce = dyn_cast<scf::ReduceOp>(op)) {
+// - with >1 operands: TODO, multiple reductions, not supported yet by Kokkos IR but will be in future
+static LogicalResult inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap, Value reduceIdentity) {
+  if(scf::ReduceOp reduce = dyn_cast<scf::ReduceOp>(op)) {
+    int numReductions = reduce->getNumOperands();
+    if(numReductions > 1) return reduce->emitError("Currently cannot lower scf::ReduceOp with >1 reductions.");
+    if(numReductions == 0) {
+      // Simple terminator, does nothing
+      // The terminator for the new Kokkos loop (kokkos.yield) is automatically inserted already
+      return success();
+    }
     //TODO: support multiple reductions here!
     kokkos::UpdateReductionOp newReduce = rewriter.create<kokkos::UpdateReductionOp>(reduce->getLoc(), irMap.lookupOrDefault(reduce.getOperand(0)), irMap.lookupOrDefault(reduceIdentity));
     // Map (old to new) the two reduce block arguments
@@ -188,12 +200,13 @@ void inlineLoopBodyOp(RewriterBase &rewriter, Operation* op, IRMapping& irMap, V
   else {
     rewriter.clone(*op, irMap);
   }
+  return success();
 }
 
 // Rewrite the given scf.parallel as a kokkos.parallel, with the given execution
 // space and nesting level (not for TeamPolicy loops) Return the new op, or NULL
 // if failed.
-kokkos::RangeParallelOp scfParallelToKokkosRange(RewriterBase &rewriter,
+static LogicalResult scfParallelToKokkosRange(kokkos::RangeParallelOp& newOp, RewriterBase &rewriter,
                                                  scf::ParallelOp op,
                                                  kokkos::ExecutionSpace exec,
                                                  kokkos::ParallelLevel level) {
@@ -218,19 +231,21 @@ kokkos::RangeParallelOp scfParallelToKokkosRange(RewriterBase &rewriter,
     irMap.map(std::get<0>(p), std::get<1>(p));
   }
   for (Operation &oldOp : op.getBody()->getOperations()) {
-    inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
+    auto result = inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
+    if(failed(result)) return result;
   }
   // The new loop is fully constructed.
   // Erase the old loop and replace uses of its results with those of the new
   // loop.
   rewriter.replaceOp(op, kokkosRange);
-  return kokkosRange;
+  newOp = kokkosRange;
+  return success();
 }
 
 // Convert an scf.parallel to a TeamPolicy parallel_for.
 // The outer loop always uses a 1D iteration space where 1 team == 1 iteration.
 // We can recover the original ND induction variables from the league rank.
-kokkos::TeamParallelOp scfParallelToKokkosTeam(RewriterBase &rewriter,
+static LogicalResult scfParallelToKokkosTeam(kokkos::TeamParallelOp& newOp, RewriterBase &rewriter,
                                                scf::ParallelOp op,
                                                Value teamSizeHint,
                                                Value vectorLengthHint) {
@@ -285,12 +300,14 @@ kokkos::TeamParallelOp scfParallelToKokkosTeam(RewriterBase &rewriter,
     }
   }
   for (Operation &oldOp : op.getBody()->getOperations()) {
-    inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
+    auto result = inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
+    if(failed(result)) return result;
   }
   // The new loop is fully constructed. Erase the old loop and replace uses of
   // its results with those of the new loop.
   rewriter.replaceOp(op, kokkosTeam);
-  return kokkosTeam;
+  newOp = kokkosTeam;
+  return success();
 }
 
 // Convert an scf.parallel to a kokkos.thread_parallel.
@@ -298,7 +315,7 @@ kokkos::TeamParallelOp scfParallelToKokkosTeam(RewriterBase &rewriter,
 // (TeamPolicy and TeamThread) are used together to iterate over one flat range.
 // This leaves the last level (ThreadVector) available to iterate over
 // additional nested loops.
-Operation *scfParallelToKokkosThread(RewriterBase &rewriter, scf::ParallelOp op,
+static LogicalResult scfParallelToKokkosThread(kokkos::ThreadParallelOp& newOp, RewriterBase &rewriter, scf::ParallelOp op,
                                      Value vectorLengthHint) {
   rewriter.setInsertionPoint(op);
   // First, compute the league size as the product of iteration bounds of op
@@ -351,24 +368,26 @@ Operation *scfParallelToKokkosThread(RewriterBase &rewriter, scf::ParallelOp op,
     }
   }
   for (Operation &oldOp : op.getBody()->getOperations()) {
-    inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
+    auto result = inlineLoopBodyOp(rewriter, &oldOp, irMap, reduceIdentity);
+    if(failed(result)) return result;
   }
   // The new loop is fully constructed.
   // As a last step, erase the old loop and replace uses of its results with
   // those of the new loop.
   rewriter.replaceOp(op, kokkosThread);
-  return kokkosThread;
+  newOp = kokkosThread;
+  return success();
 }
 
 // ** Helpers to determine the parallel context of ops inside parallel loops **
 // is op inside a team parallel (kokkos.TeamParallelOp)?
-bool inTeamLoop(Operation* op)
+static bool inTeamLoop(Operation* op)
 {
   return op->getParentOfType<kokkos::TeamParallelOp>();
 }
 
 // is op inside a thread parallel loop? (ThreadParallelOp, or RangeParallelOp with TeamThreadRange)
-bool inThreadLoop(Operation* op)
+static bool inThreadLoop(Operation* op)
 {
   if(op->getParentOfType<kokkos::ThreadParallelOp>())
     return true;
@@ -382,7 +401,7 @@ bool inThreadLoop(Operation* op)
 }
 
 // is op inside a vector parallel loop? (ThreadVectorRange or TeamVectorRange)
-bool inVectorLoop(Operation* op)
+static bool inVectorLoop(Operation* op)
 {
   // if we are inside a vector loop, it must be the innermost RangeParallel
   kokkos::RangeParallelOp par = op->getParentOfType<kokkos::RangeParallelOp>();
@@ -393,7 +412,7 @@ bool inVectorLoop(Operation* op)
 }
 
 // Within the given loop, wrap individual ops inside kokkos.single as needed.
-void insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
+static LogicalResult insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
   loop->walk<WalkOrder::PostOrder>([&](Operation* op)
   {
     if(opNeedsSingle(op)) {
@@ -426,6 +445,7 @@ void insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
     }
     return WalkResult::advance();
   });
+  return success();
 }
 
 // !! TODO: team synchronization requires dataflow analysis within op's body
@@ -436,7 +456,7 @@ void insertSingleWraps(RewriterBase& rewriter, Operation* loop) {
 // and single that does not already synchronize. This is obviously not ideal for
 // performance of complex kernels, but most of our common examples (spmv-like
 // patterns, fused batched gemv/axpy) are not affected.
-void insertTeamSynchronization(RewriterBase &rewriter,
+static LogicalResult insertTeamSynchronization(RewriterBase &rewriter,
                                         kokkos::TeamParallelOp op) {
   op->walk([&](kokkos::RangeParallelOp nestedOp) {
     auto level = nestedOp.getParallelLevel();
@@ -456,14 +476,16 @@ void insertTeamSynchronization(RewriterBase &rewriter,
       rewriter.create<kokkos::TeamBarrierOp>(single.getLoc());
     }
   });
+  return success();
 }
 
 // Recursively map the scf.parallel children of op.
-void mapNestedLoopsImpl(RewriterBase &rewriter, Operation *op,
+static LogicalResult mapNestedLoopsImpl(RewriterBase &rewriter, Operation *op,
                         int parLevelsRemaining) {
   // Make a list of the directly nested scf.parallel ops inside op, and their
   // respective nesting depths
   int opDepth = kokkos::getOpParallelDepth(op);
+  LogicalResult result = success();
   op->walk([&](scf::ParallelOp child) {
     int childDepth = kokkos::getOpParallelDepth(child);
     if (childDepth == opDepth + 1) {
@@ -478,11 +500,14 @@ void mapNestedLoopsImpl(RewriterBase &rewriter, Operation *op,
       // to determine if child will use a parallelism level
       bool childWillBeSequential =
           parLevelsRemaining == 1 && childNestingLevel > 1;
+      auto result = 
       mapNestedLoopsImpl(rewriter, child,
                          parLevelsRemaining - (childWillBeSequential ? 0 : 1));
       // Now map child itself
       if (childWillBeSequential) {
-        scfParallelToSequential(rewriter, child);
+        scf::ForOp newOp;
+        result = scfParallelToSequential(newOp, rewriter, child);
+        if(failed(result)) return WalkResult::interrupt();
       } else {
         kokkos::ParallelLevel level;
         if (parLevelsRemaining == 2) {
@@ -491,16 +516,19 @@ void mapNestedLoopsImpl(RewriterBase &rewriter, Operation *op,
         } else {
           level = kokkos::ParallelLevel::ThreadVector;
         }
-        scfParallelToKokkosRange(rewriter, child,
-                                 kokkos::ExecutionSpace::TeamHandle, level);
+        kokkos::RangeParallelOp newOp;
+        result = scfParallelToKokkosRange(newOp, rewriter, child, kokkos::ExecutionSpace::TeamHandle, level);
+        if(failed(result)) return WalkResult::interrupt();
       }
     }
+    return WalkResult::advance();
   });
+  return result;
 }
 
 // Map all scf.parallel loops nested within a kokkos.team_parallel.
-void mapTeamNestedLoops(RewriterBase &rewriter, kokkos::TeamParallelOp op) {
-  mapNestedLoopsImpl(rewriter, op, 2);
+static LogicalResult mapTeamNestedLoops(RewriterBase &rewriter, kokkos::TeamParallelOp op) {
+  return mapNestedLoopsImpl(rewriter, op, 2);
 }
 
 struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
@@ -550,34 +578,38 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
     // For exec == Host, just parallelize the outermost loop with RangePolicy
     // and serialize any inner loops.
     if (exec == kokkos::ExecutionSpace::Host || nestingLevel == 1) {
-      Operation *newOp = scfParallelToKokkosRange(
-          rewriter, op, exec, kokkos::ParallelLevel::RangePolicy);
-      if (!newOp)
-        return op.emitError("Failed to convert scf.parallel to "
-                            "kokkos.range_parallel (RangePolicy)");
+      kokkos::RangeParallelOp newOp;
+      LogicalResult result = scfParallelToKokkosRange(newOp, rewriter, op, exec, kokkos::ParallelLevel::RangePolicy);
+      if(failed(result)) return result;
       // NOTE: when walking a tree and replacing ops as they're found, the walk
       // must be PostOrder
       newOp->walk<WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
-        scfParallelToSequential(rewriter, innerParOp);
+        scf::ForOp newForOp;
+        result = scfParallelToSequential(newForOp, rewriter, innerParOp);
+        if(failed(result)) return WalkResult::interrupt();
         return WalkResult::skip();
       });
+      if(failed(result)) return result;
     } else if (nestingLevel == 2) {
       // Note: zero for vector length hint mean that no hint is given, and
       // Kokkos::AUTO should be used instead
       Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
-      Operation *newOp = scfParallelToKokkosThread(rewriter, op, zero);
-      if (!newOp)
-        return op.emitError(
-            "Failed to convert scf.parallel to kokkos.thread_parallel");
+      kokkos::ThreadParallelOp newOp;
+      LogicalResult result = scfParallelToKokkosThread(newOp, rewriter, op, zero);
+      if(failed(result)) return result;
       // since the nesting level is 2, we know all inner parallel loops should
       // be at ThreadVector level. There won't be any more scf.parallels nested
       // within those.
       newOp->walk<mlir::WalkOrder::PostOrder>([&](scf::ParallelOp innerParOp) {
-        scfParallelToKokkosRange(rewriter, innerParOp, kokkos::ExecutionSpace::TeamHandle,
+        kokkos::RangeParallelOp newOp;
+        result = scfParallelToKokkosRange(newOp, rewriter, innerParOp, kokkos::ExecutionSpace::TeamHandle,
                                  kokkos::ParallelLevel::ThreadVector);
+        if(failed(result)) return WalkResult::interrupt();
         return WalkResult::skip();
       });
-      insertSingleWraps(rewriter, newOp);
+      if(failed(result)) return result;
+      result = insertSingleWraps(rewriter, newOp);
+      if(failed(result)) return result;
     } else if (nestingLevel >= 3) {
       // Generate a team policy for the top level. This leaves 2 more levels of
       // parallelism to use. See mapTeamNestedLoops() above for how these are
@@ -586,15 +618,16 @@ struct KokkosLoopRewriter : public OpRewritePattern<scf::ParallelOp> {
       // Note: zero for team size hint and vector length hint mean that no hint
       // is given, and Kokkos::AUTO should be used instead
       Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
-      kokkos::TeamParallelOp newOp =
-          scfParallelToKokkosTeam(rewriter, op, zero, zero);
-      if (!newOp)
-        return op.emitError(
-            "Failed to convert scf.parallel to kokkos.team_parallel");
-      mapTeamNestedLoops(rewriter, newOp);
+      kokkos::TeamParallelOp newOp;
+      LogicalResult result = scfParallelToKokkosTeam(newOp, rewriter, op, zero, zero);
+      if(failed(result)) return result;
+      result = mapTeamNestedLoops(rewriter, newOp);
+      if(failed(result)) return result;
       // The loop structure is now finalized; insert singles and team barriers where needed
-      insertSingleWraps(rewriter, newOp);
-      insertTeamSynchronization(rewriter, newOp);
+      result = insertSingleWraps(rewriter, newOp);
+      if(failed(result)) return result;
+      result = insertTeamSynchronization(rewriter, newOp);
+      if(failed(result)) return result;
     }
     return success();
   }

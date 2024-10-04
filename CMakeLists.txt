@@ -5,8 +5,10 @@ set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-set(LAPIS_ENABLE_PART_TENSOR 1 CACHE BOOL
-       "Enables part_tensor dialect.")
+# Turn on part tensor dialect by default
+IF(NOT DEFINED LAPIS_ENABLE_PART_TENSOR)
+  SET(LAPIS_ENABLE_PART_TENSOR ON)
+ENDIF()
 
 if(LAPIS_ENABLE_PART_TENSOR)
   add_compile_definitions(ENABLE_PART_TENSOR)
