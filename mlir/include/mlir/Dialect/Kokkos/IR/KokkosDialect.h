@@ -2,8 +2,8 @@
 #define MLIR_DIALECT_KOKKOS_DIALECT_H
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
@@ -50,16 +50,20 @@ int getOpParallelDepth(Operation *op);
 // Determine which execution space (Host or Device) executes the given op.
 // Note that op may contain parallel kernels that execute on device,
 // but in that case op itself still counts as Host.
-kokkos::ExecutionSpace getOpExecutionSpace(Operation* op);
+kokkos::ExecutionSpace getOpExecutionSpace(Operation *op);
 
-// Get a list of the memrefs whose data is read by op, while running on the provided exec space.
-// This does not include memrefs where op only uses metadata (shape, type, layout).
-DenseSet<Value> getMemrefsRead(Operation* op, kokkos::ExecutionSpace space);
+// Get a list of the memrefs whose data is read by op, while running on the
+// provided exec space. This does not include memrefs where op only uses
+// metadata (shape, type, layout).
+DenseSet<Value> getMemrefsRead(Operation *op, kokkos::ExecutionSpace space);
 
 // Get a list of the memrefs (possibly) whose data is written to by op.
-DenseSet<Value> getMemrefsWritten(Operation* op, kokkos::ExecutionSpace space);
+DenseSet<Value> getMemrefsWritten(Operation *op, kokkos::ExecutionSpace space);
 
-} // namespace kokkos 
+bool valueIsIntegerConstantZero(Value v);
+bool valueIsIntegerConstantOne(Value v);
+
+} // namespace kokkos
 } // namespace mlir
 
 #endif // MLIR_DIALECT_KOKKOS_DIALECT_H
