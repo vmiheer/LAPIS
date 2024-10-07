@@ -98,8 +98,8 @@ Value buildIndexProduct(Location loc, RewriterBase &rewriter, ValRange range) {
 // threads/vector lanes, and those replications can have different values (CUDA
 // model). The Kokkos dialect is capable of representing this case (e.g. team
 // rank is a block argument and other values can be computed based on that), but
-// Kokkos dialect code lowered from SCF (everything handled by this pass) can
-// never do that.
+// Kokkos dialect code lowered from SCF (that is, all programs this pass is
+// applied to) can never do that.
 static bool opNeedsSingle(Operation *op) {
   return isa<memref::StoreOp>(op) || isa<memref::AtomicRMWOp>(op) ||
          isa<kokkos::UpdateReductionOp>(op);
@@ -155,8 +155,11 @@ static LogicalResult estimateParallelism(Value &parallelism,
         // - A is a memref.load R[i]
         // - B is a memref.load R[i + 1]
         // - A,B are nested directly under topParallel (no control flow ops
-        // enclosing them) Then the average parallelism of the inner loop is
-        // (R[N] - R[0]) / N
+        // enclosing them)
+        //
+        // Then the average parallelism of the inner loop is (R[N] - R[0]) / N.
+        // Since it's better to over-provision than under-provision
+        // threads/lanes, we take the ceiling of this: (R[N] - R[0] + N - 1) / N.
         bool followsCsrPattern = true;
         Value csrPatternOffsets;
         // Check for conditions in a do-while, so that break will exit on the
