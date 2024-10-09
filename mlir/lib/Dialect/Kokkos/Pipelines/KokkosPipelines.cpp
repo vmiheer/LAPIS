@@ -93,7 +93,7 @@ void mlir::kokkos::buildSparseKokkosCompiler(
 
   /* OLD! 
 #ifdef ENABLE_PART_TENSOR
-  pm.addPass(::mlir::createPartTensorConversionPass());
+  pm.addPass(::mlir::createPartTensorConversionPass(options.partTensorBackend));
 #endif
   pm.addNestedPass<func::FuncOp>(createLinalgGeneralizationPass());
   pm.addPass(createSparsificationAndBufferizationPass(
