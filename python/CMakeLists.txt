@@ -20,26 +20,24 @@ add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=lapis.")
 declare_mlir_python_sources(LapisPythonSources)
 declare_mlir_python_sources(LapisPythonExtensions)
 
-declare_mlir_python_sources(LapisPythonSources.linalg_kokkos_backend
+declare_mlir_python_sources(LapisPythonSources.kokkos_backend
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lapis"
   ADD_TO_PARENT LapisPythonSources
   SOURCES
-    linalg_kokkos_backend/abc.py
-    linalg_kokkos_backend/KokkosBackend.py
-    linalg_kokkos_backend/KokkosBackendJustMLIRDump.py
+    KokkosBackend.py
 )
 
-declare_mlir_python_sources(LapisPythonSources.tools
-  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lapis"
-  ADD_TO_PARENT LapisPythonSources
-  SOURCES
-    tools/mlir_pytaco_api.py
-    tools/mlir_pytaco_utils.py
-    tools/testing_utils.py
-    tools/mlir_pytaco.py
-    tools/mlir_pytaco_io.py
-    tools/mlir_sparse_compiler.py
-)
+#declare_mlir_python_sources(LapisPythonSources.tools
+#  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lapis"
+#  ADD_TO_PARENT LapisPythonSources
+#  SOURCES
+#    tools/mlir_pytaco_api.py
+#    tools/mlir_pytaco_utils.py
+#    tools/testing_utils.py
+#    tools/mlir_pytaco.py
+#    tools/mlir_pytaco_io.py
+#    tools/mlir_sparse_compiler.py
+#)
 
 ################################################################################
 # Extensions
@@ -59,7 +57,7 @@ declare_mlir_python_extension(LapisPythonExtensions.Main
 target_include_directories(LapisPythonExtensions.Main INTERFACE
   $<BUILD_INTERFACE:${LAPIS_SOURCE_DIR}/mlir/include>
   $<BUILD_INTERFACE:${LAPIS_BINARY_DIR}/mlir/include>)
-target_link_libraries(LapisPythonExtensions.Main INTERFACE MLIRPythonExtension.Core LAPISCAPIIR)
+target_link_libraries(LapisPythonExtensions.Main INTERFACE MLIRPythonExtension.Core LapisCAPI)
 
 ################################################################################
 # Generate packages and shared library
@@ -93,7 +91,6 @@ target_link_libraries(
   LapisAggregateCAPI
   PUBLIC
   LapisCAPI
-  LAPISCAPIIR
 )
 
 add_mlir_python_modules(LapisPythonModules

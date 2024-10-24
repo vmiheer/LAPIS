@@ -9,7 +9,7 @@ module {
     %dim_0 = memref.dim %arg0, %c1 : memref<?x?x?x?xf32>
     %dim_1 = memref.dim %arg0, %c2 : memref<?x?x?x?xf32>
     %dim_2 = memref.dim %arg0, %c3 : memref<?x?x?x?xf32>
-    %0 = "kokkos.team_parallel"(%dim, %c0, %c0) ({
+    %0 = "kokkos.team_parallel"(%dim, %dim_0, %dim_2) ({
     ^bb0(%arg4: index, %arg5: index, %arg6: index, %arg7: index):
       %1 = kokkos.range_parallel (%arg8) -> (%dim_0) -> f32 {
         %2 = scf.for %arg9 = %c0 to %dim_1 step %c1 iter_args(%arg10 = %cst) -> (f32) {

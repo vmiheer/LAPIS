@@ -6,10 +6,10 @@
 #  test/Integration/Dialect/SparseTensor/python/ until we have a better
 #  solution.
 
-from lapis import execution_engine
-from lapis._mlir_libs._mlir import ir
+from mlir import execution_engine
+from mlir._mlir_libs._mlir import ir
 #from lapis._mlir_libs._lapis import passmanager
-from lapis.passmanager import *
+from mlir.passmanager import *
 from typing import Sequence
 
 

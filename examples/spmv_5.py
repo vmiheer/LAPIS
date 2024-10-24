@@ -9,6 +9,7 @@ import shutil
 _SCRIPT_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(_SCRIPT_PATH)
 
+print("Importing mlir_pytaco_api")
 from lapis.tools import mlir_pytaco_api as pt
 from lapis.tools import mlir_pytaco_io as ptio
 from lapis.tools import testing_utils as utils

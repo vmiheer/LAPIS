@@ -18,7 +18,7 @@
 namespace mlir {
 
 #define GEN_PASS_DECL
-#include "mlir/Dialect/Kokkos/Transforms/Passes.h.inc"
+#include "lapis/Dialect/Kokkos/Transforms/Passes.h.inc"
 
 void populateParallelUnitStepPatterns(RewritePatternSet &patterns);
 std::unique_ptr<Pass> createParallelUnitStepPass();
@@ -31,18 +31,13 @@ std::unique_ptr<Pass> createKokkosMemorySpaceAssignmentPass();
 
 std::unique_ptr<Pass> createKokkosDualViewManagementPass();
 
-// Old Kokkos codegen for kernel outlining and host-device copying
-// (does not use the ops in Kokkos dialect)
-void populateSparseKokkosCodegenPatterns(RewritePatternSet &patterns);
-std::unique_ptr<Pass> createSparseKokkosCodegenPass();
-
 //===----------------------------------------------------------------------===//
 // Registration.
 //===----------------------------------------------------------------------===//
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
-#include "mlir/Dialect/Kokkos/Transforms/Passes.h.inc"
+#include "lapis/Dialect/Kokkos/Transforms/Passes.h.inc"
 
 } // namespace mlir
 

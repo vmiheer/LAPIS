@@ -56,22 +56,4 @@ def KokkosDualViewManagement : Pass<"kokkos-dualview-management", "ModuleOp"> {
   ];
 }
 
-// Old Kokkos GPU codegen (not using Kokkos dialect ops)
-def SparseKokkosCodegen : Pass<"sparse-kokkos-codegen", "ModuleOp"> {
-  let summary = "Generates Kokkos code during sparsification";
-  let description = [{
-    Enables sparse compiler to generate Kokkos code, which can use non-host backends.
-  }]; 
-  let constructor = "mlir::createSparseKokkosCodegenPass()";
-  let dependentDialects = [ 
-    "arith::ArithDialect",
-    "bufferization::BufferizationDialect",
-    "emitc::EmitCDialect",
-    "linalg::LinalgDialect",
-    "memref::MemRefDialect",
-    "scf::SCFDialect",
-    "sparse_tensor::SparseTensorDialect",
-  ];  
-}
-
 #endif // MLIR_DIALECT_KOKKOS_TRANSFORMS_PASSES

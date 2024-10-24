@@ -1,8 +1,8 @@
 module {
   func.func @myfunc(%arg0: memref<?x?x?xf32>, %arg1: memref<?x?xf32>, %arg2: index, %arg3: index, %arg4: index) -> memref<?x?x?xf32> {
-    %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %cst = arith.constant 3.141590e+00 : f32
+    %c0 = arith.constant 0 : index
     %0 = arith.subi %arg4, %c1 : index
     %1 = arith.addi %arg4, %arg3 : index
     %2 = arith.subi %1, %c1 : index
@@ -19,7 +19,7 @@ module {
       %12 = memref.load %arg0[%8, %9, %11] : memref<?x?x?xf32>
       %13 = arith.addf %12, %cst : f32
       memref.store %13, %arg0[%8, %9, %11] : memref<?x?x?xf32>
-      scf.yield
+      scf.reduce 
     }
     return %arg0 : memref<?x?x?xf32>
   }

@@ -13,8 +13,8 @@
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
-#include "mlir/Dialect/Kokkos/Transforms/Passes.h"
+#include "lapis/Dialect/Kokkos/IR/KokkosDialect.h"
+#include "lapis/Dialect/Kokkos/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/SparseTensor/Transforms/Passes.h" //for SparseParallelizationStrategy
@@ -28,7 +28,7 @@ namespace mlir {
 
 #define GEN_PASS_DEF_SPARSEKOKKOSCODEGEN
 
-#include "mlir/Dialect/Kokkos/Transforms/Passes.h.inc"
+#include "lapis/Dialect/Kokkos/Transforms/Passes.h.inc"
 } // namespace mlir
 
 using namespace mlir;
@@ -77,21 +77,6 @@ struct KokkosMemorySpaceAssignmentPass
     (void) applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
-
-struct SparseKokkosCodegenPass
-    : public impl::SparseKokkosCodegenBase<SparseKokkosCodegenPass> {
-
-  SparseKokkosCodegenPass() = default;
-  SparseKokkosCodegenPass(const SparseKokkosCodegenPass& pass) = default;
-
-  void runOnOperation() override {
-    auto *ctx = &getContext();
-    RewritePatternSet patterns(ctx);
-    populateSparseKokkosCodegenPatterns(patterns);
-    (void) applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
-  }
-};
-
 }
 
 std::unique_ptr<Pass> mlir::createParallelUnitStepPass()
@@ -107,10 +92,5 @@ std::unique_ptr<Pass> mlir::createKokkosLoopMappingPass()
 std::unique_ptr<Pass> mlir::createKokkosMemorySpaceAssignmentPass()
 {
   return std::make_unique<KokkosMemorySpaceAssignmentPass>();
-}
-
-// Old Kokkos codegen pass
-std::unique_ptr<Pass> mlir::createSparseKokkosCodegenPass() {
-  return std::make_unique<SparseKokkosCodegenPass>();
 }
 

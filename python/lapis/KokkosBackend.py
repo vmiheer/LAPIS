@@ -1,28 +1,23 @@
-# Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Also available under a BSD-style license. See LICENSE.
+# Initialize LAPIS python extension.
+import lapis._mlir_libs._lapis
 
 import ctypes
 import numpy as np
-import sys
 import os
+import sys
 import subprocess
-from io import StringIO
 import tempfile
+import torch
 
-from .._mlir_libs._lapis import register_dialect
+# For running passes/pipelines on a module
+from lapis import ir
+from lapis.ir import Module
+from lapis.ir import *
+from lapis.passmanager import *
 
-from lapis.tools import mlir_pytaco_api as pt
-from lapis.tools import mlir_pytaco
-from lapis._mlir_libs._mlir import ir
-from lapis._mlir_libs._lapis import passmanager
-
-from .abc import LinalgKokkosBackend
-
-__all__ = [
-    "LinalgKokkosBackend",
-]
+# For emitting a lowered module to Kokkos C++
+from lapis._mlir_libs._lapis import emit_kokkos
+from lapis._mlir_libs._lapis import emit_kokkos_sparse
 
 LOWERING_PIPELINE = "builtin.module(" + ",".join([
     "func.func(refback-generalize-tensor-pad)",
@@ -81,7 +76,7 @@ LOWERING_PIPELINE = "builtin.module(" + ",".join([
 #    #"reconcile-unrealized-casts",
 #])
 
-class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
+class KokkosBackend:
     """Main entry-point for the Kokkos LinAlg backend."""
 
     def __init__(self, dump_mlir = False, before_mlir_filename = "dump.mlir", after_mlir_filename = "after_dump.mlir", index_instance=0, num_instances=0, ws = os.getcwd()):
@@ -157,7 +152,6 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
 
         module_name = "MyModule"
         #original_stderr = sys.stderr
-        #sys.stderr = StringIO()
         asm_for_error_report = module.operation.get_asm(
             large_elements_limit=10, enable_debug_info=True)
         # Lower module in place to make it ready for compiler backends.
@@ -177,7 +171,7 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
             os.makedirs(moduleRoot, exist_ok=True)
             # Generate Kokkos C++ source from the module.
             print("Emitting module as Kokkos C++...")
-            pm.emit_kokkos(module, moduleRoot + "/" + self.package_name + "_module.cpp", moduleRoot + "/" + self.package_name + ".py")
+            emit_kokkos(module, moduleRoot + "/" + self.package_name + "_module.cpp", moduleRoot + "/" + self.package_name + ".py")
             return self.compile_kokkos_to_native(moduleRoot, False)
 
     def compile_sparse(self, module: ir.Module, options: str = ""):
@@ -192,7 +186,6 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
 
         module_name = "MySparseModule"
         #original_stderr = sys.stderr
-        #sys.stderr = StringIO()
         # Lower module in place to make it ready for compiler backends.
 
         #module = tensor.get_expression().get_module(tensor, tensor._assignment.indices)
@@ -203,9 +196,10 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
             options = options.replace("kokkos-uses-hierarchical", "")
         else:
             useHierarchical = False
-        pipeline = f'builtin.module(sparse-compiler-kokkos{{{options} reassociate-fp-reductions=1 enable-index-optimizations=1}})'
-        pm = passmanager.PassManager.parse(pipeline, context=module.context)
-        pm.run(module.operation)
+        pipeline = f'builtin.module(sparse-compiler-kokkos{{{options} parallelization-strategy=any-storage-any-loop}})'
+        with module.context as ctx:
+            pm = PassManager.parse(pipeline, context=module.context)
+            pm.run(module.operation)
         if self.dump_mlir:
             with open(self.before_mlir_filename, 'w') as f:
                 f.write(asm_for_error_report)
@@ -219,6 +213,6 @@ class KokkosBackendLinalgOnTensorsBackend(LinalgKokkosBackend):
         os.makedirs(moduleRoot, exist_ok=True)
         # Generate Kokkos C++ source from the module.
         print("Emitting sparse module as Kokkos C++...")
-        pm.emit_kokkos_sparse(module, moduleRoot + "/" + self.package_name + "_module.cpp", moduleRoot + "/" + self.package_name + ".py", useHierarchical, self.index_instance==self.num_instances)
+        emit_kokkos_sparse(module, moduleRoot + "/" + self.package_name + "_module.cpp", moduleRoot + "/" + self.package_name + ".py", useHierarchical, self.index_instance==self.num_instances)
         return self.compile_kokkos_to_native(moduleRoot, True)
 

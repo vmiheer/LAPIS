@@ -1,16 +1,17 @@
 // ===- PartTensorDialect.cpp - part_tensor dialect implementation -----===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.  // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// See https://llvm.org/LICENSE.txt for license information.  //
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Kokkos/IR/KokkosDialect.h"
+#include "lapis/Dialect/Kokkos/IR/KokkosDialect.h"
 #include <utility>
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
@@ -21,22 +22,22 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 
-#include "mlir/Dialect/Kokkos/IR/KokkosEnums.cpp.inc"
+#include "lapis/Dialect/Kokkos/IR/KokkosEnums.cpp.inc"
 
-//#define GET_ATTRDEF_CLASSES
-//#include "mlir/Dialect/Kokkos/IR/KokkosAttrDefs.cpp.inc"
+// #define GET_ATTRDEF_CLASSES
+// #include "lapis/Dialect/Kokkos/IR/KokkosAttrDefs.cpp.inc"
 
 using namespace mlir;
 using namespace mlir::kokkos;
 
 void KokkosDialect::initialize() {
-//  addAttributes<
-//#define GET_ATTRDEF_LIST
-//#include "mlir/Dialect/Kokkos/IR/KokkosAttrDefs.cpp.inc"
-//      >();
+  //  addAttributes<
+  // #define GET_ATTRDEF_LIST
+  // #include "lapis/Dialect/Kokkos/IR/KokkosAttrDefs.cpp.inc"
+  //      >();
   addOperations<
 #define GET_OP_LIST
-#include "mlir/Dialect/Kokkos/IR/Kokkos.cpp.inc"
+#include "lapis/Dialect/Kokkos/IR/Kokkos.cpp.inc"
       >();
 }
 
@@ -59,12 +60,17 @@ static TerminatorTy verifyAndGetTerminator(Operation *op, Region &region,
 //   RangeParallelOp   //
 // ****************** //
 
-void RangeParallelOp::build(
-    OpBuilder &builder, OperationState &result, ::mlir::kokkos::ExecutionSpace executionSpace, ::mlir::kokkos::ParallelLevel parallelLevel,
-    ValueRange upperBounds, TypeRange resultTypes) {
+void RangeParallelOp::build(OpBuilder &builder, OperationState &result,
+                            ::mlir::kokkos::ExecutionSpace executionSpace,
+                            ::mlir::kokkos::ParallelLevel parallelLevel,
+                            ValueRange upperBounds, TypeRange resultTypes) {
   result.addOperands(upperBounds);
-  result.addAttribute("executionSpace", ExecutionSpaceAttr::get(builder.getContext(), executionSpace));
-  result.addAttribute("parallelLevel", ParallelLevelAttr::get(builder.getContext(), parallelLevel));
+  result.addAttribute(
+      "executionSpace",
+      ExecutionSpaceAttr::get(builder.getContext(), executionSpace));
+  result.addAttribute(
+      "parallelLevel",
+      ParallelLevelAttr::get(builder.getContext(), parallelLevel));
   result.addTypes(resultTypes);
 
   OpBuilder::InsertionGuard guard(builder);
@@ -76,9 +82,12 @@ void RangeParallelOp::build(
   RangeParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-Region &RangeParallelOp::getLoopBody() { return getRegion(); }
+SmallVector<Region *> RangeParallelOp::getLoopRegions() {
+  return SmallVector<Region *>(1, &getRegion());
+}
 
-ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult RangeParallelOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
   auto &builder = parser.getBuilder();
   // Parse an opening `(` followed by induction variables followed by `)`
   SmallVector<OpAsmParser::Argument, 4> ivs;
@@ -109,7 +118,8 @@ ParseResult RangeParallelOp::parse(OpAsmParser &parser, OperationState &result) 
     return failure();
 
   // Add a terminator if none was parsed.
-  mlir::kokkos::RangeParallelOp::ensureTerminator(*body, builder, result.location);
+  mlir::kokkos::RangeParallelOp::ensureTerminator(*body, builder,
+                                                  result.location);
   return success();
 }
 
@@ -133,8 +143,7 @@ void RangeParallelOp::getSuccessorRegions(
 LogicalResult RangeParallelOp::verify() {
   // Check that there is at least one value in upperBound.
   if (getUpperBound().empty())
-    return emitOpError(
-        "needs at least one tuple element for upperBound");
+    return emitOpError("needs at least one tuple element for upperBound");
   auto loopDim = getUpperBound().size();
 
   // Check that the body defines the same number of block arguments as there
@@ -158,16 +167,18 @@ LogicalResult RangeParallelOp::verify() {
     return yield.emitOpError() << "not allowed to have operands inside '"
                                << RangeParallelOp::getOperationName() << "'";
 
-  // Check that the number of results is the same as the number of UpdateReductionOps.
-  // Reductions can appear in 2 places: either directly as a child of body,
-  // or in a single. If in a single, the single must be a direct child of body.
+  // Check that the number of results is the same as the number of
+  // UpdateReductionOps. Reductions can appear in 2 places: either directly as a
+  // child of body, or in a single. If in a single, the single must be a direct
+  // child of body.
   SmallVector<kokkos::UpdateReductionOp, 4> reductions;
-  for(auto reduce : body->getOps<kokkos::UpdateReductionOp>()) {
-      reductions.push_back(reduce);
+  for (auto reduce : body->getOps<kokkos::UpdateReductionOp>()) {
+    reductions.push_back(reduce);
   }
-  for(auto single : body->getOps<kokkos::SingleOp>()) {
-    for(auto reduce : single.getRegion().front().getOps<kokkos::UpdateReductionOp>()) {
-        reductions.push_back(reduce);
+  for (auto single : body->getOps<kokkos::SingleOp>()) {
+    for (auto reduce :
+         single.getRegion().front().getOps<kokkos::UpdateReductionOp>()) {
+      reductions.push_back(reduce);
     }
   }
   auto resultsSize = getResults().size();
@@ -188,14 +199,13 @@ LogicalResult RangeParallelOp::verify() {
   return success();
 }
 
-kokkos::UpdateReductionOp RangeParallelOp::getReduction()
-{
-  Region& body = this->getLoopBody();
-  for(kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
+kokkos::UpdateReductionOp RangeParallelOp::getReduction() {
+  Region &body = this->getLoopBody();
+  for (kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
     return op;
-  for(kokkos::SingleOp single : body.getOps<kokkos::SingleOp>())
-  {
-    for(kokkos::UpdateReductionOp op : single.getRegion().getOps<kokkos::UpdateReductionOp>())
+  for (kokkos::SingleOp single : body.getOps<kokkos::SingleOp>()) {
+    for (kokkos::UpdateReductionOp op :
+         single.getRegion().getOps<kokkos::UpdateReductionOp>())
       return op;
   }
   return nullptr;
@@ -205,10 +215,9 @@ kokkos::UpdateReductionOp RangeParallelOp::getReduction()
 //   TeamParallelOp   //
 // ****************** //
 
-void TeamParallelOp::build(
-    OpBuilder &builder, OperationState &result,
-    Value leagueSize, Value teamSizeHint, Value vectorLengthHint,
-    TypeRange resultTypes) {
+void TeamParallelOp::build(OpBuilder &builder, OperationState &result,
+                           Value leagueSize, Value teamSizeHint,
+                           Value vectorLengthHint, TypeRange resultTypes) {
   result.addOperands(leagueSize);
   result.addOperands(teamSizeHint);
   result.addOperands(vectorLengthHint);
@@ -222,7 +231,9 @@ void TeamParallelOp::build(
   TeamParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-Region &TeamParallelOp::getLoopBody() { return getRegion(); }
+SmallVector<Region *> TeamParallelOp::getLoopRegions() {
+  return SmallVector<Region *>(1, &getRegion());
+}
 
 /*
 ParseResult TeamParallelOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -271,8 +282,8 @@ ParseResult TeamParallelOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Add a terminator if none was parsed.
-  mlir::kokkos::RangeParallelOp::ensureTerminator(*body, builder, result.location);
-  return success();
+  mlir::kokkos::RangeParallelOp::ensureTerminator(*body, builder,
+result.location); return success();
 }
 */
 
@@ -328,7 +339,8 @@ LogicalResult TeamParallelOp::verify() {
     return yield.emitOpError() << "not allowed to have operands inside '"
                                << RangeParallelOp::getOperationName() << "'";
 
-  // Check that the number of results is the same as the number of UpdateReductionOps.
+  // Check that the number of results is the same as the number of
+UpdateReductionOps.
   // Reductions can appear in 2 places: either directly as a child of body,
   // or in a single. If in a single, the single must be a direct child of body.
   SmallVector<kokkos::UpdateReductionOp, 4> reductions;
@@ -366,14 +378,13 @@ LogicalResult TeamParallelOp::verify() {
 }
 */
 
-kokkos::UpdateReductionOp TeamParallelOp::getReduction()
-{
-  Region& body = this->getLoopBody();
-  for(kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
+kokkos::UpdateReductionOp TeamParallelOp::getReduction() {
+  Region &body = this->getLoopBody();
+  for (kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
     return op;
-  for(kokkos::SingleOp single : body.getOps<kokkos::SingleOp>())
-  {
-    for(kokkos::UpdateReductionOp op : single.getRegion().getOps<kokkos::UpdateReductionOp>())
+  for (kokkos::SingleOp single : body.getOps<kokkos::SingleOp>()) {
+    for (kokkos::UpdateReductionOp op :
+         single.getRegion().getOps<kokkos::UpdateReductionOp>())
       return op;
   }
   return nullptr;
@@ -383,10 +394,9 @@ kokkos::UpdateReductionOp TeamParallelOp::getReduction()
 //   ThreadParallelOp   //
 // ******************** //
 
-void ThreadParallelOp::build(
-    OpBuilder &builder, OperationState &result,
-    Value numIters, Value vectorLengthHint,
-    TypeRange resultTypes) {
+void ThreadParallelOp::build(OpBuilder &builder, OperationState &result,
+                             Value numIters, Value vectorLengthHint,
+                             TypeRange resultTypes) {
   result.addOperands(numIters);
   result.addOperands(vectorLengthHint);
   result.addTypes(resultTypes);
@@ -395,13 +405,17 @@ void ThreadParallelOp::build(
   Type argType = builder.getIndexType();
   Location argLoc = result.location;
   Region *bodyRegion = result.addRegion();
-  builder.createBlock(bodyRegion, {}, ArrayRef<Type>(argType), ArrayRef<Location>(argLoc));
+  builder.createBlock(bodyRegion, {}, ArrayRef<Type>(argType),
+                      ArrayRef<Location>(argLoc));
   ThreadParallelOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-Region &ThreadParallelOp::getLoopBody() { return getRegion(); }
+SmallVector<Region *> ThreadParallelOp::getLoopRegions() {
+  return SmallVector<Region *>(1, &getRegion());
+}
 
-void ThreadParallelOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
+void ThreadParallelOp::getSuccessorRegions(
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
   // Both the operation itself and the region may be branching into the body or
   // back into the operation itself. It is possible for loop not to enter the
   // body.
@@ -409,14 +423,13 @@ void ThreadParallelOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorI
   regions.push_back(RegionSuccessor());
 }
 
-kokkos::UpdateReductionOp ThreadParallelOp::getReduction()
-{
-  Region& body = this->getLoopBody();
-  for(kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
+kokkos::UpdateReductionOp ThreadParallelOp::getReduction() {
+  Region &body = this->getLoopBody();
+  for (kokkos::UpdateReductionOp op : body.getOps<kokkos::UpdateReductionOp>())
     return op;
-  for(kokkos::SingleOp single : body.getOps<kokkos::SingleOp>())
-  {
-    for(kokkos::UpdateReductionOp op : single.getRegion().getOps<kokkos::UpdateReductionOp>())
+  for (kokkos::SingleOp single : body.getOps<kokkos::SingleOp>()) {
+    for (kokkos::UpdateReductionOp op :
+         single.getRegion().getOps<kokkos::UpdateReductionOp>())
       return op;
   }
   return nullptr;
@@ -430,8 +443,9 @@ LogicalResult mlir::kokkos::SingleOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location,
     SingleOp::Adaptor adaptor, SmallVectorImpl<Type> &inferredReturnTypes) {
   // Return types are identical to operand types:
-  // arguments on executing thread are broadcast to the rest of the team or thread
-  for(auto arg : adaptor.getOperands())
+  // arguments on executing thread are broadcast to the rest of the team or
+  // thread
+  for (auto arg : adaptor.getOperands())
     inferredReturnTypes.push_back(arg.getType());
   return success();
 }
@@ -457,26 +471,23 @@ void UpdateReductionOp::build(
 }
 
 #define GET_OP_CLASSES
-#include "mlir/Dialect/Kokkos/IR/Kokkos.cpp.inc"
-
-#include "mlir/Dialect/Kokkos/IR/KokkosDialect.cpp.inc"
+#include "lapis/Dialect/Kokkos/IR/Kokkos.cpp.inc"
+#include "lapis/Dialect/Kokkos/IR/KokkosDialect.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // convenience methods.
 //===----------------------------------------------------------------------===//
 
 namespace mlir::kokkos {
-Value getParentMemref(Value v)
-{
-  Operation* op = v.getDefiningOp();
-  if(!op)
+Value getParentMemref(Value v) {
+  Operation *op = v.getDefiningOp();
+  if (!op)
     return v;
-  return llvm::TypeSwitch<Operation*, Value>(op)
-    .Case<memref::SubViewOp, memref::CollapseShapeOp, memref::CastOp, memref::ReinterpretCastOp>(
-    [&](auto op) { return getParentMemref(op->getOperand(0)); })
-    .Default([&](Operation*) {
-        return v;
-    });
+  return llvm::TypeSwitch<Operation *, Value>(op)
+      .Case<memref::SubViewOp, memref::CollapseShapeOp, memref::CastOp,
+            memref::ReinterpretCastOp>(
+          [&](auto op) { return getParentMemref(op->getOperand(0)); })
+      .Default([&](Operation *) { return v; });
 }
 
 func::FuncOp getCalledFunction(func::CallOp callOp) {
@@ -488,43 +499,41 @@ func::FuncOp getCalledFunction(func::CallOp callOp) {
       SymbolTable::lookupNearestSymbolFrom(callOp, sym));
 }
 
-MemorySpace getMemSpace(Value v)
-{
+MemorySpace getMemSpace(Value v) {
   // First, any value that is passed to or returned from an extern function
   // is assumed to be represented on host (so either host or dualview)
   bool hostRepresented = false;
   bool deviceRepresented = false;
-  // device represented if and only if v is used in an op enclosed in a kokkos.team_parallel,
-  // kokkos.thread_parallel or a kokkos.range_parallel with execution space == Device.
-  for (auto& use : v.getUses()) {
-    Operation* usingOp = use.getOwner();
-    if(usingOp->getParentOfType<kokkos::ThreadParallelOp>() ||
+  // device represented if and only if v is used in an op enclosed in a
+  // kokkos.team_parallel, kokkos.thread_parallel or a kokkos.range_parallel
+  // with execution space == Device.
+  for (auto &use : v.getUses()) {
+    Operation *usingOp = use.getOwner();
+    if (usingOp->getParentOfType<kokkos::ThreadParallelOp>() ||
         usingOp->getParentOfType<kokkos::TeamParallelOp>()) {
       deviceRepresented = true;
-    }
-    else if(auto rangePar = usingOp->getParentOfType<kokkos::RangeParallelOp>()) {
-      if(rangePar.getExecutionSpace() == ExecutionSpace::Host) {
+    } else if (auto rangePar =
+                   usingOp->getParentOfType<kokkos::RangeParallelOp>()) {
+      if (rangePar.getExecutionSpace() == ExecutionSpace::Host) {
         hostRepresented = true;
-      }
-      else {
+      } else {
         // rangePar's execution space is either TeamHandle
         // (which always indicates execution on device)
         // or Device (for the top-level RangePolicy).
         deviceRepresented = true;
       }
-    }
-    else if(auto call = dyn_cast<func::CallOp>(usingOp)) {
+    } else if (auto call = dyn_cast<func::CallOp>(usingOp)) {
       // v is used here as a call argument
       func::FuncOp callee = ::mlir::kokkos::getCalledFunction(call);
       // If we can't resolve call to a FuncOp, we can't do any analysis
-      if(!callee)
+      if (!callee)
         continue;
-      // If callee is extern (a declaration only), assume the function definition only access v on host.
-      // This applies to sparse tensor/part tensor runtime library calls.
-      if(callee.isExternal()) {
+      // If callee is extern (a declaration only), assume the function
+      // definition only access v on host. This applies to sparse tensor/part
+      // tensor runtime library calls.
+      if (callee.isExternal()) {
         hostRepresented = true;
-      }
-      else {
+      } else {
         // Assume we need both host and device representation.
         // At runtime, this will translate to a lazy DualView.
         hostRepresented = true;
@@ -533,11 +542,12 @@ MemorySpace getMemSpace(Value v)
     }
   }
   // Finally, if v is a result of a call, make sure it's represented correctly.
-  // If it's the result of a call to an extern function, assume it's present on host.
-  if(auto call = v.getDefiningOp<func::CallOp>()) {
+  // If it's the result of a call to an extern function, assume it's present on
+  // host.
+  if (auto call = v.getDefiningOp<func::CallOp>()) {
     func::FuncOp callee = getCalledFunction(call);
     // If we can't resolve call to a FuncOp, we can't do any analysis
-    if(callee && callee.isExternal()) {
+    if (callee && callee.isExternal()) {
       hostRepresented = true;
     }
   }
@@ -545,13 +555,12 @@ MemorySpace getMemSpace(Value v)
   // Check all return statements in a FuncOp,
   // and join the spaces of all possible returned values.
   // Note: if v appears to be used on neither host nor device, put it on host.
-  if(!deviceRepresented) {
+  if (!deviceRepresented) {
     // either host only, or neither
     return MemorySpace::Host;
-  }
-  else {
+  } else {
     // Device represented
-    if(hostRepresented)
+    if (hostRepresented)
       return MemorySpace::DualView;
     else
       return MemorySpace::Device;
@@ -564,7 +573,8 @@ MemorySpace getMemSpace(Value v)
 // - Each enclosing parallel counts for 1 more
 int getOpParallelDepth(Operation *op) {
   int depth = 0;
-  if (isa<scf::ParallelOp, kokkos::RangeParallelOp, kokkos::TeamParallelOp, kokkos::ThreadParallelOp>(op))
+  if (isa<scf::ParallelOp, kokkos::RangeParallelOp, kokkos::TeamParallelOp,
+          kokkos::ThreadParallelOp>(op))
     depth++;
   Operation *parent = op->getParentOp();
   if (parent)
@@ -576,31 +586,31 @@ int getOpParallelDepth(Operation *op) {
 // Determine which execution space (Host or Device) executes the given op.
 // Note that op may contain parallel kernels that execute on device,
 // but in that case op itself still counts as Host.
-// TODO: this will require a different approach if function calls are allowed in device kernels.
-kokkos::ExecutionSpace getOpExecutionSpace(Operation* op)
-{
-  if(op->getParentOfType<kokkos::ThreadParallelOp>() || op->getParentOfType<kokkos::TeamParallelOp>())
+// TODO: this will require a different approach if function calls are allowed in
+// device kernels.
+kokkos::ExecutionSpace getOpExecutionSpace(Operation *op) {
+  if (op->getParentOfType<kokkos::ThreadParallelOp>() ||
+      op->getParentOfType<kokkos::TeamParallelOp>())
     return kokkos::ExecutionSpace::Device;
-  if(auto rangeParallel = op->getParentOfType<kokkos::RangeParallelOp>())
+  if (auto rangeParallel = op->getParentOfType<kokkos::RangeParallelOp>())
     return rangeParallel.getExecutionSpace();
   return kokkos::ExecutionSpace::Host;
 }
 
 // Get a list of the memrefs read by op.
-DenseSet<Value> getMemrefsRead(Operation* op, kokkos::ExecutionSpace space)
-{
+DenseSet<Value> getMemrefsRead(Operation *op, kokkos::ExecutionSpace space) {
   DenseSet<Value> memrefs;
-  op->walk([&](Operation* subOp) {
-    if(getOpExecutionSpace(subOp) != space)
+  op->walk([&](Operation *subOp) {
+    if (getOpExecutionSpace(subOp) != space)
       return;
-    if(auto load = dyn_cast<memref::LoadOp>(subOp))
+    if (auto load = dyn_cast<memref::LoadOp>(subOp))
       memrefs.insert(load.getMemref());
-    else if(auto atomicUpdate = dyn_cast<memref::AtomicRMWOp>(subOp))
+    else if (auto atomicUpdate = dyn_cast<memref::AtomicRMWOp>(subOp))
       memrefs.insert(atomicUpdate.getMemref());
-    else if(auto call = dyn_cast<func::CallOp>(subOp)) {
+    else if (auto call = dyn_cast<func::CallOp>(subOp)) {
       // Assume that all memref-typed arguments can be read by the callee.
-      for(Value arg : call.getArgOperands()) {
-        if(isa<MemRefType, UnrankedMemRefType>(arg.getType())) {
+      for (Value arg : call.getArgOperands()) {
+        if (isa<MemRefType, UnrankedMemRefType>(arg.getType())) {
           memrefs.insert(arg);
         }
       }
@@ -610,22 +620,22 @@ DenseSet<Value> getMemrefsRead(Operation* op, kokkos::ExecutionSpace space)
 }
 
 // Get a list of the memrefs (possibly) written to by op.
-DenseSet<Value> getMemrefsWritten(Operation* op, kokkos::ExecutionSpace space)
-{
+DenseSet<Value> getMemrefsWritten(Operation *op, kokkos::ExecutionSpace space) {
   DenseSet<Value> memrefs;
-  op->walk([&](Operation* subOp) {
-    if(getOpExecutionSpace(subOp) != space)
+  op->walk([&](Operation *subOp) {
+    if (getOpExecutionSpace(subOp) != space)
       return;
-    if(auto store = dyn_cast<memref::StoreOp>(subOp))
+    if (auto store = dyn_cast<memref::StoreOp>(subOp))
       memrefs.insert(store.getMemref());
-    else if(auto atomicUpdate = dyn_cast<memref::AtomicRMWOp>(subOp))
+    else if (auto atomicUpdate = dyn_cast<memref::AtomicRMWOp>(subOp))
       memrefs.insert(atomicUpdate.getMemref());
-    else if(auto call = dyn_cast<func::CallOp>(subOp)) {
+    else if (auto call = dyn_cast<func::CallOp>(subOp)) {
       // Assume that all memref-typed arguments can be read by the callee,
       // since memrefs of const data cannot be represented in MLIR.
-      // TODO: actually check non-extern callees for which memrefs get read/written.
-      for(Value arg : call.getArgOperands()) {
-        if(isa<MemRefType, UnrankedMemRefType>(arg.getType())) {
+      // TODO: actually check non-extern callees for which memrefs get
+      // read/written.
+      for (Value arg : call.getArgOperands()) {
+        if (isa<MemRefType, UnrankedMemRefType>(arg.getType())) {
           memrefs.insert(arg);
         }
       }
@@ -634,5 +644,34 @@ DenseSet<Value> getMemrefsWritten(Operation* op, kokkos::ExecutionSpace space)
   return memrefs;
 }
 
+// Is v a compile-time constant integer with value 0?
+bool valueIsIntegerConstantZero(Value v) {
+  // If we don't know what op generated v, can't assume anything about its value
+  if (!v.getDefiningOp())
+    return false;
+  if (auto constantOp = dyn_cast<arith::ConstantOp>(v.getDefiningOp())) {
+    auto valAttr = constantOp.getValue();
+    if (auto iAttr = dyn_cast<IntegerAttr>(valAttr)) {
+      return iAttr.getValue().isZero();
+    }
+    return false;
+  }
+  return false;
 }
 
+// Is v a compile-time constant integer with value 1?
+bool valueIsIntegerConstantOne(Value v) {
+  // If we don't know what op generated v, can't assume anything about its value
+  if (!v.getDefiningOp())
+    return false;
+  if (auto constantOp = dyn_cast<arith::ConstantOp>(v.getDefiningOp())) {
+    auto valAttr = constantOp.getValue();
+    if (auto iAttr = dyn_cast<IntegerAttr>(valAttr)) {
+      return iAttr.getValue().isOne();
+    }
+    return false;
+  }
+  return false;
+}
+
+} // namespace mlir::kokkos

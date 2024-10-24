@@ -97,6 +97,7 @@ def RangeParallelOp : Kokkos_Op<"range_parallel",
   ];
 
   let extraClassDeclaration = [{
+    Region& getLoopBody() { return getRegion(); }
     ValueRange getInductionVars() {
       return getBody()->getArguments();
     }
@@ -142,6 +143,7 @@ def TeamParallelOp : Kokkos_Op<"team_parallel",
   ];
 
   let extraClassDeclaration = [{
+    Region& getLoopBody() { return getRegion(); }
     unsigned getNumReductions() { return getNumResults(); }
     // leagueSize is an operand, so getLeagueSize() already exists.
     Value getTeamSize() { return getLoopBody().front().getArguments()[1]; }
@@ -189,6 +191,7 @@ def ThreadParallelOp : Kokkos_Op<"thread_parallel",
   ];
 
   let extraClassDeclaration = [{
+    Region& getLoopBody() { return getRegion(); }
     unsigned getNumReductions() { return getNumResults(); }
     Value getInductionVar() { return getLoopBody().front().getArguments()[0]; }
 

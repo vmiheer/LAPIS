@@ -9,7 +9,7 @@ module {
       %1 = memref.load %arg1[%arg4, %arg4] : memref<?x?xf32>
       %2 = arith.addf %0, %1 : f32
       memref.store %2, %alloc[%arg4, %arg3] : memref<?x?xf32>
-      scf.yield
+      scf.reduce 
     }
     return %alloc : memref<?x?xf32>
   }

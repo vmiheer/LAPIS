@@ -12,10 +12,10 @@ import os
 import platform
 
 # Import MLIR related modules.
-from lapis import execution_engine
-from lapis._mlir_libs._mlir import ir
-from lapis import runtime
-from lapis.dialects import sparse_tensor
+from mlir import execution_engine
+from mlir._mlir_libs._mlir import ir
+from mlir import runtime
+from mlir.dialects import sparse_tensor
 
 from . import mlir_sparse_compiler
 

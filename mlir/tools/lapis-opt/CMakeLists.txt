@@ -9,7 +9,6 @@ target_link_libraries(lapis-opt
   ${test_libs}
   MLIRIR
   MLIRParser
-  LAPISPass
   MLIRSPIRVDialect
   MLIRSupport
   MLIROptLib
