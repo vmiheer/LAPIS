@@ -370,8 +370,7 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter,
   if(space == kokkos::MemorySpace::DualView)
     emitter << "(\"" << emitter.getOrCreateName(result) << "\"";
   else
-    emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << emitter.getOrCreateName(result) << "\"))";
-  emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << name << "\")";
+    emitter << "(Kokkos::view_alloc(Kokkos::WithoutInitializing, \"" << name << "\")";
   for(auto dynSize : op.getDynamicSizes())
   {
     emitter << ", ";
@@ -1301,28 +1300,46 @@ static LogicalResult printOperation(KokkosCppEmitter &emitter, kokkos::RangePara
     emitter << "<";
     if(op.getExecutionSpace() == kokkos::ExecutionSpace::Host)
       emitter << "Kokkos::DefaultHostExecutionSpace";
+    else
+      emitter << "Kokkos::DefaultExecutionSpace";
+    if(isMDPolicy) {
+      emitter << ", Kokkos::Rank<" << op.getNumLoops() << ">";
+    }
     emitter << ">";
   }
   emitter << "(";
   if(op.getParallelLevel() != kokkos::ParallelLevel::RangePolicy)
     emitter << "team, ";
   if(isMDPolicy) {
-    emitter << "{";
-    for(size_t i = 0; i < op.getNumLoops(); i++) {
-      if(i > 0)
-        emitter << ", ";
-      emitter << "0";
+    if(op.getParallelLevel() == kokkos::ParallelLevel::RangePolicy) {
+      // (Device-level) MDRangePolicy takes two N-element tuples (begins, ends)
+      emitter << "{";
+      for(size_t i = 0; i < op.getNumLoops(); i++) {
+        if(i > 0)
+          emitter << ", ";
+        emitter << "0";
+      }
+      emitter << "}, ";
+      emitter << "{";
+      int count = 0;
+      for(Value bound : op.getUpperBound()) {
+        if(count++)
+          emitter << ", ";
+        if(failed(emitter.emitValue(bound)))
+          return failure();
+      }
+      emitter << "}";
     }
-    emitter << "}, ";
-    emitter << "{";
-    int count = 0;
-    for(Value bound : op.getUpperBound()) {
-      if(count++)
-        emitter << ", ";
-      if(failed(emitter.emitValue(bound)))
-        return failure();
+    else {
+      // But nested MD policies just take the upper bounds as arguments directly
+      int count = 0;
+      for(Value bound : op.getUpperBound()) {
+        if(count++)
+          emitter << ", ";
+        if(failed(emitter.emitValue(bound)))
+          return failure();
+      }
     }
-    emitter << "}, ";
   }
   else {
     // 1D RangePolicy. Requires both lower and upper bounds.
