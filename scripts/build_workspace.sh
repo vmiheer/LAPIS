@@ -31,7 +31,6 @@ cmake -GNinja -S LAPIS -B lapisBuild $(llvm_cmake_linker_options) \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="$WORKSPACE/llvmBuild" \
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
-  -DLAPIS_ENABLE_PART_TENSOR=OFF \
   -DPython3_EXECUTABLE=`which python3`
 
 [[ -x lapisBuild/bin/lapis-opt ]] || cmake --build lapisBuild -j
