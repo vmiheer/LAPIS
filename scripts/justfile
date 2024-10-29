@@ -1,5 +1,13 @@
 alias lb := buildLapis
 alias llcb := buildllc
+alias b := build
+alias c := clean
+[no-cd]
+build:
+    cmake --build build
+[no-cd]
+clean:
+    cmake --build build --target clean
 buildllc:
     cmake --build ${WORKSPACE}/llvmBuild -j --target llc FileCheck mlir-cpu-runner
 buildLapis:
