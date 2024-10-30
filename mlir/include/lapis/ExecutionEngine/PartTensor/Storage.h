@@ -22,7 +22,6 @@
 #include "mlir/Dialect/SparseTensor/IR/Enums.h"
 #include "mlir/ExecutionEngine/Float16bits.h"
 #include "mlir/ExecutionEngine/SparseTensor/COO.h"
-#include "mlir/ExecutionEngine/SparseTensor/ErrorHandling.h"
 #include "mlir/ExecutionEngine/SparseTensor/Storage.h"
 #include "mlir/ExecutionEngine/SparseTensorRuntime.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -93,7 +92,7 @@ public:
 
   static PartTensorStorage<P, I, V> *
   newFromCOO(uint64_t nParts, const uint64_t *partData, uint64_t dimRank,
-             const uint64_t *dimShape, const DimLevelType *lvlTypes,
+             const uint64_t *dimShape, const LevelType *lvlTypes,
              const SparseTensorCOO<V> *spCOO);
 
   ~PartTensorStorage() = default;
@@ -156,7 +155,7 @@ bool inRegion(T loPoint, T hiPoint, T point) {
 template <typename P, typename I, typename V>
 PartTensorStorage<P, I, V> *PartTensorStorage<P, I, V>::newFromCOO(
     uint64_t partDataLength, const uint64_t *partData, uint64_t dimRank,
-    const uint64_t *dimShape, const DimLevelType *lvlTypes,
+    const uint64_t *dimShape, const LevelType *lvlTypes,
     const SparseTensorCOO<V> *spCOO) {
   using namespace mlir::part_tensor;
   using llvm::ArrayRef;

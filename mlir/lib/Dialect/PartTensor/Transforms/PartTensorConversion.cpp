@@ -22,14 +22,15 @@
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/PartTensor/IR/PartTensor.h"
-#include "mlir/Dialect/PartTensor/IR/PartTensorType.h"
-#include "mlir/Dialect/PartTensor/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/DialectConversion.h"
+
+#include "lapis/Dialect/PartTensor/IR/PartTensor.h"
+#include "lapis/Dialect/PartTensor/IR/PartTensorType.h"
+#include "lapis/Dialect/PartTensor/Transforms/Passes.h"
 
 #include "CodegenUtils.h"
 
@@ -45,7 +46,7 @@ namespace {
 /// Maps each part tensor type to an opaque pointer.
 static std::optional<Type> convertPartTensorTypes(Type type) {
   if (mlir::part_tensor::getPartTensorEncoding(type) != nullptr)
-    return LLVM::LLVMPointerType::get(IntegerType::get(type.getContext(), 8));
+    return LLVM::LLVMPointerType::get(type.getContext());
   return std::nullopt;
 }
 
@@ -78,7 +79,7 @@ public:
     Type resType = op.getType();
     const Type crdTp = cast<ShapedType>(resType).getElementType();
     Location loc = op->getLoc();
-    MemRefType callRetType = mlir::sparse_tensor::get1DMemRefType(crdTp, false);
+    MemRefType callRetType = MemRefType::get({ShapedType::kDynamic}, crdTp);
     SmallVector<Value> operands{adaptor.getOperands()[0]};
     auto fn = mlir::sparse_tensor::getFunc(
         op->getParentOfType<ModuleOp>(),
