@@ -1,5 +1,5 @@
 alias lb := buildLapis
-alias llcb := buildllc
+alias llvmb := buildllvm
 alias b := build
 alias c := clean
 [no-cd]
@@ -8,7 +8,10 @@ build:
 [no-cd]
 clean:
     cmake --build build --target clean
-buildllc:
-    cmake --build ${WORKSPACE}/llvmBuild -j --target llc FileCheck mlir-cpu-runner
+buildllvm:
+    cmake --build ${WORKSPACE}/llvmBuild --target llvm-headers \
+        llvm-libraries  tools/mlir/python/all \
+        mlir-headers mlir-libraries mlir-opt \
+        mlir-translate llc FileCheck mlir-cpu-runner
 buildLapis:
     cmake --build ${WORKSPACE}/lapisBuild -j
