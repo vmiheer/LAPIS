@@ -36,15 +36,23 @@ cmake -GNinja -S LAPIS -B lapisBuild $(llvm_cmake_linker_options) \
 [[ -x lapisBuild/bin/lapis-opt ]] || cmake --build lapisBuild -j
 
 function build_kokkos() {
-  local ARCH=$1
-  KOKKOS_ROOT=$WORKSPACE/kokkos_install_$ARCH
+  local EXTRA_CMAKE_ARGS=()
+  if [[ -z $1 ]]; then
+    local KOKKOS_ROOT=$WORKSPACE/kokkos_install
+  else
+    local ARCH=$1
+    local KOKKOS_ROOT=$WORKSPACE/kokkos_install_$ARCH
+    EXTRA_CMAKE_ARGS+=("-DKokkos_ENABLE_CUDA=ON" \
+                       "-DKokkos_ARCH_$ARCH=ON" \
+                       "-DBUILD_SHARED_LIBS=ON")
+  fi
   if [[ ! -d $KOKKOS_ROOT ]]; then
     set -x
     rm -rf $WORKSPACE/kokkosBuild
     mkdir -p $WORKSPACE/kokkosBuild
-    cmake -GNinja -DCMAKE_INSTALL_PREFIX=$KOKKOS_ROOT -DKokkos_ENABLE_CUDA=ON \
-      -DKokkos_ARCH_$ARCH=ON -DBUILD_SHARED_LIBS=ON \
-      -S $WORKSPACE/kokkos -B $WORKSPACE/kokkosBuild -G Ninja
+    cmake -GNinja -DCMAKE_INSTALL_PREFIX=$KOKKOS_ROOT \
+      ${EXTRA_CMAKE_ARGS[@]} -S $WORKSPACE/kokkos -B $WORKSPACE/kokkosBuild \
+      -G Ninja
     cmake --build $WORKSPACE/kokkosBuild -j $NUMPROCS --target install
     set +x
   fi
