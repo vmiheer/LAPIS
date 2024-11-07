@@ -2,8 +2,13 @@
 
 # Get LLVM with a specific version
 if [[ ! -d llvm-project/.git ]]; then
-  git clone --depth=1 --branch llvm-upstream \
-    git@github.com:tensor-compilers/llvm-project.git
+  git clone -c 1 --branch main git@github.com:llvm/llvm-project.git
+  pushd llvm-project;
+    git checkout b6603e1b;
+    # https://stackoverflow.com/a/7729087/1686377
+    git am "$Workspace/LAPIS/scripts/patches/"`
+      `"0001-make-sparse-tensorbase-fields-public.patch"
+  popd
 fi
 
 # Clone LAPIS
