@@ -1,5 +1,6 @@
 alias lb := buildLapis
 alias llvmb := buildllvm
+alias bpt := buildpt
 alias b := build
 alias c := clean
 [no-cd]
@@ -15,3 +16,5 @@ buildllvm:
         mlir-translate llc FileCheck mlir-cpu-runner
 buildLapis:
     cmake --build ${WORKSPACE}/lapisBuild -j
+buildpt:
+    cmake --build ${WORKSPACE}/ptMpiBuild -j --target install
