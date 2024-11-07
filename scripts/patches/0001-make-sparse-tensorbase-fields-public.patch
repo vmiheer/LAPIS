@@ -1,0 +1,24 @@
+From 61b797c47cb4f40213d7f582b1592c5bc7ecda49 Mon Sep 17 00:00:00 2001
+From: Miheer Vaidya <m.vaidya@utah.edu>
+Date: Thu, 7 Nov 2024 14:36:45 -0700
+Subject: [PATCH] make sparse tensorbase fields public
+
+---
+ mlir/include/mlir/ExecutionEngine/SparseTensor/Storage.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/mlir/include/mlir/ExecutionEngine/SparseTensor/Storage.h b/mlir/include/mlir/ExecutionEngine/SparseTensor/Storage.h
+index 80e3fec22694..3a53fb26f9bf 100644
+--- a/mlir/include/mlir/ExecutionEngine/SparseTensor/Storage.h
++++ b/mlir/include/mlir/ExecutionEngine/SparseTensor/Storage.h
+@@ -172,7 +172,6 @@ public:
+   /// Finalizes lexicographic insertions.
+   virtual void endLexInsert() = 0;
+ 
+-private:
+   const std::vector<uint64_t> dimSizes;
+   const std::vector<uint64_t> lvlSizes;
+   const std::vector<LevelType> lvlTypes;
+-- 
+2.34.1
+
