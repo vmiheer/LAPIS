@@ -12,6 +12,7 @@ spack:
   - cmake
   - py-pip
   - openmpi@4.1.6+cuda
+  - cgdb
   view: true
   compilers:
   - compiler:
