@@ -39,6 +39,7 @@ function build_kokkos() {
   local EXTRA_CMAKE_ARGS=()
   if [[ -z $1 ]]; then
     local KOKKOS_ROOT=$WORKSPACE/kokkos_install
+    EXTRA_CMAKE_ARGS+=("-DKokkos_ENABLE_OPENMP=ON")
   else
     local ARCH=$1
     local KOKKOS_ROOT=$WORKSPACE/kokkos_install_$ARCH
