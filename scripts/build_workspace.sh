@@ -68,21 +68,13 @@ else
   build_kokkos TURING75
 fi
 
-[[ -f kokkosBuild/build.ninja ]] || \
-cmake -GNinja -S kokkos -B kokkosBuild \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DKokkos_ENABLE_SERIAL=ON \
-  -DCMAKE_CXX_FLAGS="-fPIC" \
-  -DCMAKE_INSTALL_PREFIX=$WORKSPACE/kokkos_install && \
-cmake --build kokkosBuild --target install
-
 if [[ ! -x lapisBuild/nv_sm_arch ]]; then
   nvcc $WORKSPACE/kokkos/cmake/compile_tests/cuda_compute_capability.cc \
     -DSM_ONLY -o lapisBuild/nv_sm_arch
 fi
 
 export Kokkos_ROOT=$(readlink -f $(print -C 1 \
-  $WORKSPACE/kokkos_install*$(lapisBuild/nv_sm_arch) | head -1))
+  $WORKSPACE/kokkos_install*$(lapisBuild/nv_sm_arch) | head -1)) 2> /dev/null
 [[ -d $Kokkos_ROOT ]] || export Kokkos_ROOT=$WORKSPACE/kokkos_install
 [[ -d $Kokkos_ROOT ]] || { echo "Kokkos_ROOT does not exist" }
 
