@@ -5,6 +5,20 @@
 
 include "mlir/Pass/PassBase.td"
 
+def LinalgToPartTensor : Pass<"linalg-to-parttensor"> {
+  let summary = "Rewrite linalg loop to part tensor.";
+  let description = [{
+    The pass takes a linalg generic operation and surrounds them with
+    appropriate part tensor operations so that resulting operation effectively
+    performs distributed execution of given linalg op.
+  }];
+  let constructor = "mlir::createLinalgToPartTensorPass()";
+  let dependentDialects = [
+    "linalg::LinalgDialect",
+    "sparse_tensor::SparseTensorDialect"
+  ];
+}
+
 def PartTensorConversionPass : Pass<"part-tensor-conversion", "ModuleOp"> {
   let summary = "Convert part tensors and primitives to library calls";
   let description = [{
