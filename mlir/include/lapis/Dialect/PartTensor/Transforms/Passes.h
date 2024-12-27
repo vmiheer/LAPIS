@@ -36,12 +36,15 @@ public:
   PartTensorTypeToPtrConverter();
 };
 
+void populateLinalgToPartTensorPatterns(TypeConverter &typeConverter,
+                                        RewritePatternSet &patterns);
 void populatePartTensorConversionPatterns(TypeConverter &typeConverter,
                                           RewritePatternSet &patterns,
                                           PartTensorDistBackend backend);
 
 std::unique_ptr<Pass> createPartTensorConversionPass();
 std::unique_ptr<Pass> createPartTensorConversionPass(PartTensorDistBackend);
+std::unique_ptr<Pass> createLinalgToPartTensorPass();
 
 //===----------------------------------------------------------------------===//
 // Registration.
