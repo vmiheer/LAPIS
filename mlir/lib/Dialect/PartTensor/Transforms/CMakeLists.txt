@@ -29,3 +29,10 @@ add_mlir_dialect_library(MLIRPartTensorTransforms
   MLIRTransforms
   MLIRVectorDialect
 )
+
+if (LAPIS_USE_FMTLIB)
+target_link_libraries(MLIRPartTensorTransforms
+  PUBLIC
+  fmt::fmt
+)
+endif()

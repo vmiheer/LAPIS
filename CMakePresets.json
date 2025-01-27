@@ -11,11 +11,10 @@
       "displayName": "default",
       "description": "Default preset",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build",
-      "installDir": "${sourceDir}/../LAPIS-install",
+      "binaryDir": "${sourceDir}/../lapisBuild",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "${sourceDir}/../llvm-install",
-        "LLVM_TARGETS_TO_BUILD": "X86",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../llvmBuild",
+        "LLVM_TARGETS_TO_BUILD": "Native",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "LLVM_USE_LINKER": "mold",
         "LLVM_ENABLE_LLD": "OFF",
@@ -23,9 +22,11 @@
         "LAPIS_ENABLE_PART_TENSOR": "ON",
         "LLVM_PARALLEL_COMPILE_JOBS": "24",
         "LLVM_PARALLEL_LINK_JOBS": "2",
+        "LLVM_CCACHE_BUILD": "ON",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "Python3_EXECUTABLE": "/home/mvaidya/source/repos/LAPIS_Workspace/LAPIS/.spack-env/view/bin/python3"
       }
     },
     {
