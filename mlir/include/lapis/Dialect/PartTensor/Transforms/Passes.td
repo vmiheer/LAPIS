@@ -5,7 +5,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def LinalgToPartTensor : Pass<"linalg-to-parttensor"> {
+def LinalgToPartTensor : Pass<"linalg-to-parttensor", "ModuleOp"> {
   let summary = "Rewrite linalg loop to part tensor.";
   let description = [{
     The pass takes a linalg generic operation and surrounds them with
