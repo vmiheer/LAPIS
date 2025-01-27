@@ -25,8 +25,6 @@
 namespace mlir {
 #define GEN_PASS_DEF_PARTTENSORCONVERSIONPASS
 #include "lapis/Dialect/PartTensor/Transforms/Passes.h.inc"
-#define GEN_PASS_DEF_LINALGTOPARTTENSOR
-#include "lapis/Dialect/PartTensor/Transforms/Passes.h.inc"
 } // namespace mlir
 
 using namespace mlir;
@@ -82,37 +80,6 @@ struct PartTensorConversionPass
 private:
   PartTensorDistBackend backend;
 };
-
-struct LinalgToPartTensorPass
-    : public impl::LinalgToPartTensorBase<LinalgToPartTensorPass> {
-  LinalgToPartTensorPass() = default;
-  LinalgToPartTensorPass(const LinalgToPartTensorPass &pass) = default;
-
-  void runOnOperation() override {
-    auto *ctx = &getContext();
-    RewritePatternSet patterns(ctx);
-    PartTensorTypeToPtrConverter converter;
-    ConversionTarget target(*ctx);
-    // Allow func.call
-    // target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
-    //   return converter.isSignatureLegal(op.getFunctionType());
-    // });
-    // target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
-    //   return converter.isSignatureLegal(op.getCalleeType());
-    // });
-    // target.addLegalDialect<
-    //     arith::ArithDialect, bufferization::BufferizationDialect,
-    //     LLVM::LLVMDialect, memref::MemRefDialect, scf::SCFDialect,
-    //     sparse_tensor::SparseTensorDialect>();
-    // target.addLegalOp<UnrealizedConversionCastOp>();
-    // Populate with rules and apply rewriting rules.
-    populateLinalgToPartTensorPatterns(converter, patterns);
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
-      signalPassFailure();
-  }
-};
-
 } // namespace
 
 std::unique_ptr<Pass> mlir::createPartTensorConversionPass() {
@@ -122,7 +89,4 @@ std::unique_ptr<Pass> mlir::createPartTensorConversionPass() {
 std::unique_ptr<Pass>
 mlir::createPartTensorConversionPass(PartTensorDistBackend backend) {
   return std::make_unique<PartTensorConversionPass>(backend);
-}
-std::unique_ptr<Pass> mlir::createLinalgToPartTensorPass() {
-  return std::make_unique<LinalgToPartTensorPass>();
 }
