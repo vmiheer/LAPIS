@@ -27,6 +27,39 @@ using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using std::optional;
 
+namespace {
+#define GEN_PASS_DEF_LINALGTOPARTTENSOR
+#include "lapis/Dialect/PartTensor/Transforms/Passes.h.inc"
+struct LinalgToPartTensorPass
+    : public impl::LinalgToPartTensorBase<LinalgToPartTensorPass> {
+  LinalgToPartTensorPass() = default;
+  LinalgToPartTensorPass(const LinalgToPartTensorPass &pass) = default;
+
+  void runOnOperation() override {
+    auto *ctx = &getContext();
+    RewritePatternSet patterns(ctx);
+    PartTensorTypeToPtrConverter converter;
+    ConversionTarget target(*ctx);
+    // Allow func.call
+    // target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+    //   return converter.isSignatureLegal(op.getFunctionType());
+    // });
+    // target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
+    //   return converter.isSignatureLegal(op.getCalleeType());
+    // });
+    // target.addLegalDialect<
+    //     arith::ArithDialect, bufferization::BufferizationDialect,
+    //     LLVM::LLVMDialect, memref::MemRefDialect, scf::SCFDialect,
+    //     sparse_tensor::SparseTensorDialect>();
+    // target.addLegalOp<UnrealizedConversionCastOp>();
+    // Populate with rules and apply rewriting rules.
+    populateLinalgToPartTensorPatterns(converter, patterns);
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      signalPassFailure();
+  }
+};
+} // namespace
 struct FuncOpConversion final : OpConversionPattern<func::FuncOp> {
   using OpConversionPattern<func::FuncOp>::OpConversionPattern;
 
@@ -103,4 +136,8 @@ struct FuncOpConversion final : OpConversionPattern<func::FuncOp> {
 void mlir::populateLinalgToPartTensorPatterns(TypeConverter &typeConverter,
                                               RewritePatternSet &patterns) {
   patterns.add<FuncOpConversion>(typeConverter, patterns.getContext());
+}
+
+std::unique_ptr<Pass> mlir::createLinalgToPartTensorPass() {
+  return std::make_unique<LinalgToPartTensorPass>();
 }
