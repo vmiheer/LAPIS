@@ -69,29 +69,31 @@ struct FuncOpConversion final : OpConversionPattern<func::FuncOp> {
 
     // Create new function
     // auto module = SymbolTable::getNearestSymbolTable(*linalgOp);
-    auto module =
-        rewriter.getInsertionBlock()->getParent()->getParentOfType<ModuleOp>();
-    MLIRContext *context = module.getContext();
-    auto result = SymbolRefAttr::get(context, "dist_op");
-    auto opFunc = module.lookupSymbol<func::FuncOp>(result.getAttr());
+    // auto module =
+    //     rewriter.getInsertionBlock()->getParent()->getParentOfType<ModuleOp>();
+    // MLIRContext *context = module.getContext();
+    // auto result = SymbolRefAttr::get(context, "dist_op");
+    // auto opFunc = module.lookupSymbol<func::FuncOp>(result.getAttr());
 
-    if (!opFunc) {
+    // if (!opFunc) {
+    {
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(&module->getRegion(0).front());
-      // auto opFunctionTy = FunctionType::get(
-      //     rewriter.getContext(),
-      //     (*linalgOp).getOperation()->getOperands().getTypes(),
-      //     (*linalgOp).getOperation()->getResults().getTypes());
+      rewriter.setInsertionPoint(funcOp);
       auto opFunctionTy = FunctionType::get(
           rewriter.getContext(),
           (*linalgOp).getOperation()->getOperands().getTypes(), {});
-      opFunc = rewriter.create<func::FuncOp>(rewriter.getUnknownLoc(),
-                                             "dist_op", opFunctionTy);
+      auto opFunc = rewriter.create<func::FuncOp>(funcOp.getLoc(), "dist_op",
+                                                  opFunctionTy);
+      opFunc.setPrivate();
       Block *entryBB = opFunc.addEntryBlock();
-      // opFunc.dump();
+      rewriter.setInsertionPointToEnd(entryBB);
+      rewriter.create<func::ReturnOp>(funcOp.getLoc());
     }
-    // rewriter.replaceOp(funcOp, opFunc);
+
+    // opFunc.dump();
+    // }
     rewriter.eraseOp(funcOp);
+    // rewriter.replaceOp(funcOp, opFunc);
     // auto newFuncOp = rewriter.create<func::FuncOp>(
     //     funcOp.getLoc(), funcOp.getName(), funcOp.getType());
     return success();
