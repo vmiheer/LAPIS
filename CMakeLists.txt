@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
 # Turn on part tensor dialect by default
 option(LAPIS_ENABLE_PART_TENSOR "Enable the part tensor dialect" ON)
+option(LAPIS_USE_FMTLIB "Use fmtlib for formatting/printing" ON)
 if(LAPIS_ENABLE_PART_TENSOR)
   add_compile_definitions(ENABLE_PART_TENSOR)
 endif()
@@ -100,6 +101,14 @@ if("mpact" IN_LIST LLVM_EXTERNAL_PROJECTS)
 else()
   set(LAPIS_HAS_MPACT OFF)
 endif()
+
+if (LAPIS_USE_FMTLIB)
+  include(cmake/CPM.cmake)
+  CPMAddPackage(
+    NAME fmt
+    GITHUB_REPOSITORY fmtlib/fmt
+    GIT_TAG 11.1.3
+  )
 
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
