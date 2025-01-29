@@ -109,6 +109,7 @@ if (LAPIS_USE_FMTLIB)
     GITHUB_REPOSITORY fmtlib/fmt
     GIT_TAG 11.1.3
   )
+endif()
 
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})

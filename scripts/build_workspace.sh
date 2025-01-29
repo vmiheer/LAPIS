@@ -28,7 +28,7 @@ cmake --build llvmBuild --target llvm-headers \
 cmake -GNinja -S LAPIS -B lapisBuild $(llvm_cmake_linker_options) \
   -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
   -DLLVM_CCACHE_BUILD=ON -DLLVM_TARGETS_TO_BUILD="Native" \
-  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_BUILD_TYPE=Release -DLAPIS_USE_FMTLIB=ON \
   -DCMAKE_PREFIX_PATH="$WORKSPACE/llvmBuild" \
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
   -DPython3_EXECUTABLE=`which python3`
