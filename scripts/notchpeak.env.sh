@@ -8,6 +8,7 @@ export ON_NOTCHPEAK=1
 module load cmake/3.26.0.lua
 module load ninja/1.11.1.lua
 module load ccache/4.6.1.lua
+module load openmpi/4.1.6.lua
 # reloading gcc causes error about loading zlib module
 which gcc | grep gcc-11.2.0 &> /dev/null || module load gcc/11.2.0
 which mold &> /dev/null || module load mold/2.1.0
