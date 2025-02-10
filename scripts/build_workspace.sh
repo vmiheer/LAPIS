@@ -39,7 +39,8 @@ function build_kokkos() {
   local EXTRA_CMAKE_ARGS=()
   if [[ -z $1 ]]; then
     local KOKKOS_ROOT=$WORKSPACE/kokkos_install
-    EXTRA_CMAKE_ARGS+=("-DKokkos_ENABLE_OPENMP=ON")
+    EXTRA_CMAKE_ARGS+=("-DKokkos_ENABLE_OPENMP=ON"
+                       "-DBUILD_SHARED_LIBS=ON")
   else
     local ARCH=$1
     local KOKKOS_ROOT=$WORKSPACE/kokkos_install_$ARCH
@@ -59,16 +60,18 @@ function build_kokkos() {
   fi
 }
 
-if [[ $ON_NOTCHPEAK -eq 1 ]]; then
-  for i in MAXWELL50 MAXWELL52 MAXWELL53 PASCAL60 PASCAL61 VOLTA70 VOLTA72 \
-    TURING75 AMPERE80 AMPERE86; do
-    build_kokkos $i
-  done
-else
-  build_kokkos TURING75
-fi
+# if [[ $ON_NOTCHPEAK -eq 1 ]]; then
+#   for i in MAXWELL50 MAXWELL52 MAXWELL53 PASCAL60 PASCAL61 VOLTA70 VOLTA72 \
+#     TURING75 AMPERE80 AMPERE86; do
+#     build_kokkos $i
+#   done
+# else
+#   build_kokkos TURING75
+# fi
 
-if [[ ! -x lapisBuild/nv_sm_arch ]]; then
+build_kokkos
+
+if [[ ! -x lapisBuild/nv_sm_arch && -x $(which nvcc 2> /dev/null) ]]; then
   nvcc $WORKSPACE/kokkos/cmake/compile_tests/cuda_compute_capability.cc \
     -DSM_ONLY -o lapisBuild/nv_sm_arch
 fi
@@ -85,7 +88,7 @@ if [[ ! -f ptMpiBuild/build.ninja ]]; then
   mkdir -p ptMpiBuild
   mkdir -p ptMpiInstall
   cmake -GNinja -S parttensor_mpi_backend -B ptMpiBuild \
-    -DCMAKE_BUILD_TYPE=Release -DUSE_CUDA=ON \
+    -DCMAKE_BUILD_TYPE=Release -DUSE_CUDA=OFF \
     -DCMAKE_INSTALL_PREFIX=$WORKSPACE/ptMpiInstall
   cmake --build ptMpiBuild --target install
 fi
