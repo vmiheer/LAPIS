@@ -26,8 +26,18 @@ using mlir::linalg::generalizeNamedOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using std::optional;
+using mlir::sparse_tensor::createFuncCall;
+using mlir::sparse_tensor::genAlloca;
+using mlir::sparse_tensor::EmitCInterface;
 
 namespace {
+static Value genGetRankCall(OpBuilder &builder, Location loc) {
+  StringRef name = "mpi_getRank";
+  Type iTp = builder.getIndexType();
+  return createFuncCall(builder, loc, name, iTp, {}, EmitCInterface::Off)
+      .getResult(0);
+}
+
 #define GEN_PASS_DEF_LINALGTOPARTTENSOR
 #include "lapis/Dialect/PartTensor/Transforms/Passes.h.inc"
 struct LinalgToPartTensorPass
@@ -35,12 +45,11 @@ struct LinalgToPartTensorPass
   LinalgToPartTensorPass() = default;
   LinalgToPartTensorPass(const LinalgToPartTensorPass &pass) = default;
 
-  LogicalResult processFunction(func::FuncOp funcOp,
-                                ImplicitLocOpBuilder &builder) {
+  optional<LinalgOp> getCandidateLinalgOp(func::FuncOp funcOp) {
     using llvm::dbgs;
     auto &region = funcOp.getRegion();
     if (!region.hasOneBlock())
-      return failure();
+      return std::nullopt;
     // if there is any sub-region which is not a linalg op, disable conversion
     size_t numLinalgOps = 0;
     optional<LinalgOp> linalgOp;
@@ -57,26 +66,38 @@ struct LinalgToPartTensorPass
     });
     if (walkResult.wasInterrupted()) {
       fmt::println("walk interrupted");
-      return failure();
+      return std::nullopt;
     }
     if (numLinalgOps != 1) {
       fmt::println("Found {} linalg ops so disabling conversion", numLinalgOps);
-      return (numLinalgOps == 0) ? success() : failure();
+      return std::nullopt;
     }
 
     const bool AllSparse = lapis::part_tensor::hasAllSparseResult(*linalgOp) &&
                            lapis::part_tensor::hasAllSparseOperands(*linalgOp);
     if (!AllSparse) {
       fmt::println("Only supported when all arguments and results are sparse!");
-      return failure();
+      return std::nullopt;
     }
-
+    return linalgOp;
+  }
+  LogicalResult processFunction(func::FuncOp funcOp,
+                                ImplicitLocOpBuilder &builder) {
+    auto linalgOp = getCandidateLinalgOp(funcOp);
+    if (!linalgOp)
+      return failure();
     auto partTensorTypes = llvm::to_vector(
         llvm::map_range(linalgOp->getOperation()->getOperands().getTypes(),
                         [&](Type t) -> Type {
                           return lapis::part_tensor::getPartTensorType(
                               builder.getContext(), cast<RankedTensorType>(t));
                         }));
+    // auto getRankTy =
+    //     FunctionType::get(builder.getContext(), {}, {builder.getIndexType()});
+    // auto getRankDecl =
+    //     builder.create<func::FuncOp>(funcOp.getLoc(), "mpi_getRank", getRankTy);
+    // getRankDecl.setPrivate();
+    auto indexTp = builder.getIndexType();
     auto opFunctionTy =
         FunctionType::get(builder.getContext(), partTensorTypes, {});
     auto opFunc =
@@ -84,6 +105,15 @@ struct LinalgToPartTensorPass
     opFunc.setPrivate();
     Block *entryBB = opFunc.addEntryBlock();
     builder.setInsertionPointToEnd(entryBB);
+    auto rank = genGetRankCall(builder, funcOp.getLoc());
+    auto memref1dDynTp = MemRefType::get({ShapedType::kDynamic}, indexTp);
+    auto arg0 = entryBB->getArgument(0);
+    auto primaryPartPlan = builder.create<part_tensor::GetPartitionsOp>(
+        funcOp.getLoc(), memref1dDynTp, arg0);
+    auto const arg0Rank = arg0.getType().cast<RankedTensorType>().getRank();
+    auto arg0partspec = genAlloca(builder, funcOp.getLoc(), arg0Rank * 2,
+                                 indexTp, false);
+    // Let's assume first parameter is going to be primary tensor
     builder.create<func::ReturnOp>(funcOp.getLoc());
     return success();
   }
