@@ -2552,7 +2552,7 @@ void KokkosCppEmitter::registerRuntimeSupportFunctions()
   }
   // PartTensor functions
   for (std::string funcName :
-       {"mpi_getActiveMask", "getSlice", "mpi_getSlice",
+       {"mpi_getActiveMask", "getSlice", "mpi_getSlice", "csr_to_csrv_v2",
         "mpi_getSliceForActiveMask", "krs_getRank", "mpi_getRank"}) {
     registerCIface(false, funcName);
   }
