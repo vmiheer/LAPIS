@@ -2547,7 +2547,7 @@ void KokkosCppEmitter::registerRuntimeSupportFunctions()
   for (std::string funcName :
        {"delSparseTensor",     "endInsert",     "endLexInsert",
         "overwrite_csrv_csrv", "sparseDimSize", "sparseLvlSize",
-        "free_active_mask",    "extract_slice"}) {
+        "free_active_mask",    "extract_slice", "sparse_densev_to_vanilla_dense"}) {
     registerNonPrefixed(false, funcName);
   }
   // PartTensor functions
