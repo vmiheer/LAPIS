@@ -25,10 +25,10 @@ using mlir::ModuleOp;
 using mlir::linalg::generalizeNamedOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
-using std::optional;
 using mlir::sparse_tensor::createFuncCall;
-using mlir::sparse_tensor::genAlloca;
 using mlir::sparse_tensor::EmitCInterface;
+using mlir::sparse_tensor::genAlloca;
+using std::optional;
 
 namespace {
 static Value genGetRankCall(OpBuilder &builder, Location loc) {
@@ -93,9 +93,11 @@ struct LinalgToPartTensorPass
                               builder.getContext(), cast<RankedTensorType>(t));
                         }));
     // auto getRankTy =
-    //     FunctionType::get(builder.getContext(), {}, {builder.getIndexType()});
+    //     FunctionType::get(builder.getContext(), {},
+    //     {builder.getIndexType()});
     // auto getRankDecl =
-    //     builder.create<func::FuncOp>(funcOp.getLoc(), "mpi_getRank", getRankTy);
+    //     builder.create<func::FuncOp>(funcOp.getLoc(), "mpi_getRank",
+    //     getRankTy);
     // getRankDecl.setPrivate();
     auto indexTp = builder.getIndexType();
     auto opFunctionTy =
@@ -103,7 +105,12 @@ struct LinalgToPartTensorPass
     auto opFunc =
         builder.create<func::FuncOp>(funcOp.getLoc(), "dist_op", opFunctionTy);
     opFunc.setPrivate();
+    IRMapping mapping;
     Block *entryBB = opFunc.addEntryBlock();
+    // for (auto i : llvm::seq<size_t>(0, partTensorTypes.size())) {
+    //   auto arg = entryBB->getArgument(i);
+    //   mapping.map(linalgOp->getOperation()->getOperands()[i], arg);
+    // }
     builder.setInsertionPointToEnd(entryBB);
     auto rank = genGetRankCall(builder, funcOp.getLoc());
     auto memref1dDynTp = MemRefType::get({ShapedType::kDynamic}, indexTp);
@@ -111,8 +118,28 @@ struct LinalgToPartTensorPass
     auto primaryPartPlan = builder.create<part_tensor::GetPartitionsOp>(
         funcOp.getLoc(), memref1dDynTp, arg0);
     auto const arg0Rank = arg0.getType().cast<RankedTensorType>().getRank();
-    auto arg0partspec = genAlloca(builder, funcOp.getLoc(), arg0Rank * 2,
-                                 indexTp, false);
+    auto arg0partspec =
+        genAlloca(builder, funcOp.getLoc(), arg0Rank * 2, indexTp, false);
+    // duplicate linalg.generic with new operands
+    auto linalgOpTy = linalgOp->getOperation()->getResultTypes();
+    auto linalgOpResultTypes =
+        llvm::to_vector(llvm::map_range(linalgOpTy, [&](Type t) -> Type {
+          return lapis::part_tensor::getPartTensorType(
+              builder.getContext(), cast<RankedTensorType>(t));
+        }));
+    auto linalgOpResult = builder.create<linalg::GenericOp>(
+        funcOp.getLoc(), linalgOpResultTypes,
+        entryBB->getArguments().drop_back(), entryBB->getArguments().back(),
+        linalgOp->getIndexingMapsArray(), linalgOp->getIteratorTypesArray());
+    linalgOp->getOperation()->getRegion(0).cloneInto(
+        &linalgOpResult.getRegion(), linalgOpResult.getRegion().begin(),
+        mapping);
+    // auto access0 = linalgOp->getIndexingMapsArray()[0];
+    // access0.dump();
+    // auto ranges = linalgOp->getLoopsToShapesMap();
+    // fmt::print("LoopsToShapesMap: ");
+    // ranges.dump();
+
     // Let's assume first parameter is going to be primary tensor
     builder.create<func::ReturnOp>(funcOp.getLoc());
     return success();
