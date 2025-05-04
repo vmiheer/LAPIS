@@ -134,6 +134,10 @@ struct LinalgToPartTensorPass
     linalgOp->getOperation()->getRegion(0).cloneInto(
         &linalgOpResult.getRegion(), linalgOpResult.getRegion().begin(),
         mapping);
+    builder.create<func::ReturnOp>(funcOp.getLoc());
+    builder.setInsertionPoint(linalgOpResult.getOperation());
+    auto extents = llvm::cast<linalg::LinalgOp>(linalgOpResult.getOperation())
+                       .createLoopRanges(builder, funcOp.getLoc());
     // auto access0 = linalgOp->getIndexingMapsArray()[0];
     // access0.dump();
     // auto ranges = linalgOp->getLoopsToShapesMap();
@@ -141,7 +145,6 @@ struct LinalgToPartTensorPass
     // ranges.dump();
 
     // Let's assume first parameter is going to be primary tensor
-    builder.create<func::ReturnOp>(funcOp.getLoc());
     return success();
   }
   void runOnOperation() override {
