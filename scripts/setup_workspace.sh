@@ -13,17 +13,17 @@ fi
 
 # Clone LAPIS
 if [[ ! -d LAPIS/.git ]]; then
-  git clone git@github.com:tensor-compilers/LAPIS.git
+  git clone git@github.com:vmiheer/LAPIS.git
   pushd LAPIS; git checkout vmiheer/main; popd
 fi
 
 if [[ ! -d vmiheer-mlir-playground/.git ]]; then
-  git clone git@github.com:tensor-compilers/vmiheer-mlir-playground.git
+  git clone git@github.com:hpcrl/vmiheer-mlir-playground.git
   pushd vmiheer-mlir-playground; git checkout lapis-main; popd
 fi
 
 if [[ ! -d parttensor_mpi_backend/.git ]]; then
-  git clone git@github.com:tensor-compilers/parttensor_mpi_backend.git
+  git clone git@github.com:hpcrl/parttensor_mpi_backend.git
   pushd parttensor_mpi_backend; git checkout lapis-main; popd
 fi
 
