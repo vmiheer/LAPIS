@@ -1,8 +1,12 @@
 #include <optional>
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/TypeUtilities.h"
 
@@ -18,6 +22,7 @@
 
 #include "CodegenUtils.h"
 #include "fmt/core.h"
+#include "llvm/ADT/STLExtras.h"
 
 using namespace mlir;
 using namespace mlir::part_tensor;
@@ -118,8 +123,27 @@ struct LinalgToPartTensorPass
     auto primaryPartPlan = builder.create<part_tensor::GetPartitionsOp>(
         funcOp.getLoc(), memref1dDynTp, arg0);
     auto const arg0Rank = arg0.getType().cast<RankedTensorType>().getRank();
-    auto arg0partspec =
-        genAlloca(builder, funcOp.getLoc(), arg0Rank * 2, indexTp, false);
+    auto partSpecs = llvm::to_vector(llvm::map_range(
+        llvm::seq<size_t>(0, entryBB->getNumArguments()), [&](size_t i) {
+          auto arg = entryBB->getArgument(i);
+          auto argRank = llvm::cast<RankedTensorType>(arg.getType()).getRank();
+          return genAlloca(builder, funcOp.getLoc(), argRank * 2, indexTp,
+                           false);
+        }));
+    auto &arg0partspec = partSpecs[0];
+    auto ptStartIdx = builder.create<arith::MulIOp>(
+        funcOp.getLoc(), rank,
+        builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), arg0Rank * 2));
+    llvm::for_each(llvm::seq<size_t>(0, arg0Rank * 2), [&](size_t i) {
+      Value ptIdx = builder.create<arith::AddIOp>(
+          funcOp.getLoc(), ptStartIdx,
+          builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), i));
+      Value ptVal = builder.create<memref::LoadOp>(funcOp.getLoc(),
+                                                   primaryPartPlan, ptIdx);
+      builder.create<memref::StoreOp>(
+          funcOp.getLoc(), ptVal, arg0partspec,
+          Value(builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), i)));
+    });
     // duplicate linalg.generic with new operands
     auto linalgOpTy = linalgOp->getOperation()->getResultTypes();
     auto linalgOpResultTypes =
@@ -138,10 +162,90 @@ struct LinalgToPartTensorPass
     builder.setInsertionPoint(linalgOpResult.getOperation());
     auto extents = llvm::cast<linalg::LinalgOp>(linalgOpResult.getOperation())
                        .createLoopRanges(builder, funcOp.getLoc());
-    // auto access0 = linalgOp->getIndexingMapsArray()[0];
-    // access0.dump();
+    auto access0 = linalgOp->getIndexingMapsArray()[0];
+    access0.dump();
+    fmt::println("Access0 number of inputs: {}", access0.getNumInputs());
+    for (auto i : llvm::seq<size_t>(0, access0.getNumResults())) {
+      // fmt::print("{} ", access0.isFunctionOfDim(i));
+      fmt::print("{} ", access0.getDimPosition(i));
+    }
+    fmt::println("");
+    auto access0InvPermMap =
+        mlir::inverseAndBroadcastProjectedPermutation(access0);
+    access0InvPermMap.dump();
+    auto const loopRank = access0.getNumInputs();
+    SmallVector<Value> workloadLo(loopRank), workloadHi(loopRank);
+    // generate loads from primaryPartPlan
+    for (auto i : llvm::seq<size_t>(0, loopRank)) {
+      auto expr = access0InvPermMap.getResult(i);
+      auto constExpr = dyn_cast<AffineConstantExpr>(expr);
+      if (constExpr && constExpr.getValue() == 0) {
+        auto lo = builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), 0);
+        auto hi = extents[i].size;
+        workloadLo[i] = lo;
+        workloadHi[i] =
+            getValueOrCreateConstantIndexOp(builder, funcOp.getLoc(), hi);
+        continue;
+      }
+
+      auto dim = access0InvPermMap.getDimPosition(i);
+      Value arg0Idx =
+          builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), dim);
+      Value arg0HiIdx = builder.create<arith::ConstantIndexOp>(funcOp.getLoc(),
+                                                               arg0Rank + dim);
+      auto loExt =
+          builder.create<memref::LoadOp>(indexTp, arg0partspec, arg0Idx);
+      auto hiExt =
+          builder.create<memref::LoadOp>(indexTp, arg0partspec, arg0HiIdx);
+      workloadLo[i] = (loExt);
+      workloadHi[i] = (hiExt);
+    }
+    fmt::println("loopextents: ");
+    for (auto v : extents) {
+      v.size.dump();
+    }
+    fmt::println("workloadLo: ");
+    for (auto v : workloadLo) {
+      v.dump();
+    }
+    fmt::println("workloadHi: ");
+    for (auto v : workloadHi) {
+      v.dump();
+    }
+    fmt::println("IsProjectedPermutation {}",
+                 llvm::all_of(linalgOp->getIndexingMapsArray(), [](auto map) {
+                   return map.isProjectedPermutation();
+                 }));
+    for (auto i : llvm::seq<size_t>(1, partSpecs.size())) {
+      auto pspec = partSpecs[i];
+      auto pspecTp = mlir::cast<MemRefType>(pspec.getType());
+      auto pspecRank = pspecTp.getRank();
+      auto tensorRank =
+          llvm::cast<RankedTensorType>(entryBB->getArgument(i).getType())
+              .getRank();
+      auto accessMap = linalgOp->getIndexingMapsArray()[i];
+      for (auto i : llvm::seq<size_t>(0, tensorRank)) {
+        auto expr = accessMap.getResult(i);
+        auto dim = llvm::cast<AffineDimExpr>(expr).getPosition();
+        Value arg0Idx =
+            builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), i);
+        Value arg0HiIdx = builder.create<arith::ConstantIndexOp>(
+            funcOp.getLoc(), i + tensorRank);
+        builder.create<memref::StoreOp>(funcOp.getLoc(), workloadLo[i], pspec,
+                                        arg0Idx);
+        builder.create<memref::StoreOp>(funcOp.getLoc(), workloadHi[i], pspec,
+                                        arg0HiIdx);
+      }
+    }
+    SmallVector<Value> slices(partSpecs.size());
+    for (auto i : llvm::seq<size_t>(0, partSpecs.size())) {
+      auto pspec = partSpecs[i];
+      auto ptensor = entryBB->getArgument(i);
+      slices[i] = builder.create<part_tensor::GetSliceOp>(
+          funcOp.getLoc(), ptensor.getType(), ptensor, pspec);
+    }
     // auto ranges = linalgOp->getLoopsToShapesMap();
-    // fmt::print("LoopsToShapesMap: ");
+    // fmt::println("LoopsToShapesMap: ");
     // ranges.dump();
 
     // Let's assume first parameter is going to be primary tensor

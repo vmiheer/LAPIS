@@ -16,23 +16,6 @@
   partConst = 1,
   sparseAttributes = #densev
 }>
-#proj_tensor_map = affine_map<(dh, nh)[Nh] -> (dh * Nh + nh)>
-#input_proj_map = {
-  indexing_maps = [
-    affine_map<(n, f, dh, nh) -> (n, f)>,  // X (in)
-    affine_map<(n, f, dh, nh) -> (dh, nh, f)>,  // Q_Proj (in)
-    affine_map<(n, f, dh, nh) -> (n, dh, nh)>  // Q (out)
-  ],
-  iterator_types = ["parallel", "reduction", "parallel", "parallel"]
-}
-#output_proj_map = {
-  indexing_maps = [
-    affine_map<(n, f, dh, nh) -> (n, dh, nh)>,  // Attn (in)
-    affine_map<(n, f, dh, nh) -> (dh, nh, f)>,  // O_Proj (in)
-    affine_map<(n, f, dh, nh) -> (n, f)>  // O (out)
-  ],
-  iterator_types = ["parallel", "parallel", "reduction", "reduction"]
-}
 #bsddmm_map = {
   indexing_maps = [
     affine_map<(n1, n2, dh, nh) -> (n1, dh, nh)>,  // q (in)
@@ -42,15 +25,6 @@
   ],
   iterator_types = ["parallel", "parallel", "reduction", "parallel"],
   doc = "attn(n1, n2, nh) = q(n1, dh, nh) * k(n2, dh, nh)"
-}
-#bspmm_map = {
-  indexing_maps = [
-    affine_map<(n1, n2, dh, nh) -> (n1, n2, nh)>,  // attn (in)
-    affine_map<(n1, n2, dh, nh) -> (n2, dh, nh)>,  // v (in)
-    affine_map<(n1, n2, dh, nh) -> (n1, dh, nh)>   // out (out)
-  ],
-  iterator_types = ["parallel", "parallel", "reduction", "parallel"],
-  doc = "out(n1, dh, nh) = attn(n1, n2, nh) * v(n2, dh, nh)"
 }
 
 module {
