@@ -22,6 +22,7 @@
 
 #include "CodegenUtils.h"
 #include "fmt/core.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 
 using namespace mlir;
@@ -91,8 +92,9 @@ struct LinalgToPartTensorPass
     auto linalgOp = getCandidateLinalgOp(funcOp);
     if (!linalgOp)
       return failure();
+    auto sparseTensorTypes = linalgOp->getOperation()->getOperands().getTypes();
     auto partTensorTypes = llvm::to_vector(
-        llvm::map_range(linalgOp->getOperation()->getOperands().getTypes(),
+        llvm::map_range(sparseTensorTypes,
                         [&](Type t) -> Type {
                           return lapis::part_tensor::getPartTensorType(
                               builder.getContext(), cast<RankedTensorType>(t));
@@ -145,9 +147,9 @@ struct LinalgToPartTensorPass
           Value(builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), i)));
     });
     // duplicate linalg.generic with new operands
-    auto linalgOpTy = linalgOp->getOperation()->getResultTypes();
+    auto linalgOpResTy = linalgOp->getOperation()->getResultTypes();
     auto linalgOpResultTypes =
-        llvm::to_vector(llvm::map_range(linalgOpTy, [&](Type t) -> Type {
+        llvm::to_vector(llvm::map_range(linalgOpResTy, [&](Type t) -> Type {
           return lapis::part_tensor::getPartTensorType(
               builder.getContext(), cast<RankedTensorType>(t));
         }));
@@ -242,8 +244,21 @@ struct LinalgToPartTensorPass
       auto pspec = partSpecs[i];
       auto ptensor = entryBB->getArgument(i);
       slices[i] = builder.create<part_tensor::GetSliceOp>(
-          funcOp.getLoc(), ptensor.getType(), ptensor, pspec);
+          funcOp.getLoc(), sparseTensorTypes[i], ptensor, pspec);
     }
+    auto newLinalgOp = builder.create<linalg::GenericOp>(funcOp.getLoc(),
+                                             linalgOpResTy, llvm::ArrayRef(slices).drop_back(), slices.back(),
+                                             linalgOp->getIndexingMapsArray(),
+                                             linalgOp->getIteratorTypesArray());
+    IRMapping mapping1;
+    linalgOp->getOperation()->getRegion(0).cloneInto(
+        &newLinalgOp.getRegion(), newLinalgOp.getRegion().begin(),
+        mapping1);
+    // delete linalgOpResultTypes
+    auto entryBBArgs = entryBB->getArguments();
+    builder.create<part_tensor::SetSliceOp>(
+        funcOp.getLoc(), partTensorTypes.back() , entryBBArgs.back(), partSpecs.back(), slices.back());
+    linalgOpResult.getOperation()->erase();
     // auto ranges = linalgOp->getLoopsToShapesMap();
     // fmt::println("LoopsToShapesMap: ");
     // ranges.dump();

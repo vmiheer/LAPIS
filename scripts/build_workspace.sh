@@ -88,7 +88,7 @@ if [[ ! -f ptMpiBuild/build.ninja ]]; then
   mkdir -p ptMpiBuild
   mkdir -p ptMpiInstall
   cmake -GNinja -S parttensor_mpi_backend -B ptMpiBuild \
-    -DCMAKE_BUILD_TYPE=Release -DUSE_CUDA=OFF \
+    -DCMAKE_BUILD_TYPE=Debug -DUSE_CUDA=OFF \
     -DCMAKE_INSTALL_PREFIX=$WORKSPACE/ptMpiInstall
   cmake --build ptMpiBuild --target install
 fi
