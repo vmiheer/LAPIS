@@ -11,7 +11,6 @@ spack:
   - libffi
   - cmake
   - py-pip
-  - cgdb
   view: true
   compilers:
   - compiler:
