@@ -13,13 +13,13 @@ fi
 
 # Clone LAPIS
 if [[ ! -d LAPIS/.git ]]; then
-  git clone git@github.com:vmiheer/LAPIS.git
-  pushd LAPIS; git checkout vmiheer/main; popd
+  git clone git@github.com:vmiheer/LAPIS.git 
 fi
+pushd LAPIS; git checkout vmiheer-main; popd
 
 if [[ ! -d vmiheer-mlir-playground/.git ]]; then
   git clone git@github.com:hpcrl/vmiheer-mlir-playground.git
-  pushd vmiheer-mlir-playground; git checkout lapis-main; popd
+  pushd vmiheer-mlir-playground; git checkout lapis-release; popd
 fi
 
 if [[ ! -d parttensor_mpi_backend/.git ]]; then
