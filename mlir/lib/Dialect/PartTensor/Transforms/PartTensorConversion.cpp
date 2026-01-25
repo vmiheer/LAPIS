@@ -67,6 +67,43 @@ constexpr auto getBackendPrefix = [](mlir::PartTensorDistBackend backend) {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// Lowering for tensor.dim operation.
+//===----------------------------------------------------------------------===//
+
+template <PartTensorDistBackend backend>
+class TensorDimOpConverter : public OpConversionPattern<tensor::DimOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(tensor::DimOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
+    // Only lower tensor.dim if the original source type (before conversion)
+    // is a part_tensor. Use the op's operand type rather than the adaptor's
+    // converted operand type, which may already be converted to an opaque
+    // pointer and thus wouldn't reveal the part_tensor encoding.
+    Type sourceType = op.getSource().getType();
+    if (!mlir::part_tensor::getPartTensorEncoding(sourceType)) {
+      // Not a part_tensor, leave op unchanged.
+      return failure();
+    }
+    Location loc = op->getLoc();
+    Type resType = op.getType();
+  // Use the converted operand value (from the adaptor) as the actual
+  // runtime-call argument. The adaptor's operand[0] is the possibly
+  // converted opaque pointer corresponding to the original part_tensor.
+  Value source = adaptor.getOperands()[0];
+  SmallVector<Value> operands{source, adaptor.getOperands()[1]};
+    auto fn = mlir::sparse_tensor::getFunc(
+        op->getParentOfType<ModuleOp>(),
+        getBackendPrefix(backend) + "tensorDim", resType, operands,
+        mlir::sparse_tensor::EmitCInterface::On);
+    Value callRet =
+        rewriter.create<func::CallOp>(loc, resType, fn, operands).getResult(0);
+    rewriter.replaceOp(op, callRet);
+    return success();
+  }
+};
+
 /// Part conversion rule for position accesses.
 template <PartTensorDistBackend backend>
 class PartTensorGetPartitionsConverter
@@ -298,6 +335,9 @@ void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
 
     patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kNone>>(
         typeConverter, patterns.getContext());
+
+  patterns.add<TensorDimOpConverter<PartTensorDistBackend::kNone>>(
+    typeConverter, patterns.getContext());
   } break;
   case PartTensorDistBackend::kKRS: {
     patterns.add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kKRS>>(
@@ -314,6 +354,9 @@ void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
 
     patterns.add<PartTensorUpdateSliceConverter<PartTensorDistBackend::kKRS>>(
         typeConverter, patterns.getContext());
+
+  patterns.add<TensorDimOpConverter<PartTensorDistBackend::kKRS>>(
+    typeConverter, patterns.getContext());
   } break;
   case PartTensorDistBackend::kMPI: {
     patterns.add<PartTensorGetPartitionsConverter<PartTensorDistBackend::kMPI>>(
@@ -336,6 +379,9 @@ void mlir::populatePartTensorConversionPatterns(TypeConverter &typeConverter,
         typeConverter, patterns.getContext());
     patterns.add<PartTensorUpdateSliceWithActiveMaskConverter<
         PartTensorDistBackend::kMPI>>(typeConverter, patterns.getContext());
+
+  patterns.add<TensorDimOpConverter<PartTensorDistBackend::kMPI>>(
+    typeConverter, patterns.getContext());
   } break;
   default:
     llvm_unreachable("Unknown PartTensorDistBackend");

@@ -57,6 +57,12 @@ struct PartTensorConversionPass
     target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
       return converter.isSignatureLegal(op.getCalleeType());
     });
+    // Make tensor.dim illegal when its operand is a PartTensor (i.e. when the
+    // converter does not consider the operand type legal). This forces the
+    // conversion patterns to handle tensor.dim on PartTensor values.
+    target.addDynamicallyLegalOp<tensor::DimOp>([&](tensor::DimOp op) {
+      return converter.isLegal(op.getSource().getType());
+    });
     // target.addDynamicallyLegalOp<tensor::CastOp>([&](tensor::CastOp op) {
     //   return converter.isLegal(op.getSource().getType()) &&
     //          converter.isLegal(op.getDest().getType());
