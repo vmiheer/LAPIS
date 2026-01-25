@@ -124,7 +124,7 @@ struct LinalgToPartTensorPass
     auto arg0 = entryBB->getArgument(0);
     auto primaryPartPlan = builder.create<part_tensor::GetPartitionsOp>(
         funcOp.getLoc(), memref1dDynTp, arg0);
-    auto const arg0Rank = arg0.getType().cast<RankedTensorType>().getRank();
+    auto const arg0Rank = cast<RankedTensorType>(arg0.getType()).getRank();
     auto partSpecs = llvm::to_vector(llvm::map_range(
         llvm::seq<size_t>(0, entryBB->getNumArguments()), [&](size_t i) {
           auto arg = entryBB->getArgument(i);
@@ -257,7 +257,7 @@ struct LinalgToPartTensorPass
     // delete linalgOpResultTypes
     auto entryBBArgs = entryBB->getArguments();
     builder.create<part_tensor::SetSliceOp>(
-        funcOp.getLoc(), partTensorTypes.back() , entryBBArgs.back(), partSpecs.back(), slices.back());
+        funcOp.getLoc(), partTensorTypes.back() , entryBBArgs.back(), partSpecs.back(), newLinalgOp.getResult(0));
     linalgOpResult.getOperation()->erase();
     // auto ranges = linalgOp->getLoopsToShapesMap();
     // fmt::println("LoopsToShapesMap: ");
