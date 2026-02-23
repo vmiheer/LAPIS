@@ -51,6 +51,47 @@ struct LinalgToPartTensorPass
   LinalgToPartTensorPass() = default;
   LinalgToPartTensorPass(const LinalgToPartTensorPass &pass) = default;
 
+  // Helper function to create a wrapper function for the linalg operation
+  func::FuncOp createLinalgWrapperFunction(LinalgOp linalgOp,
+                                           ImplicitLocOpBuilder &builder,
+                                           ModuleOp module) {
+    auto ctx = builder.getContext();
+    auto sparseTensorTypes = linalgOp.getOperation()->getOperands().getTypes();
+    auto linalgOpResTy = linalgOp.getOperation()->getResultTypes();
+
+    // Create function type: (operands) -> (result)
+    auto funcTy = FunctionType::get(ctx, sparseTensorTypes, linalgOpResTy);
+
+    // Save current insertion point and create wrapper at module level
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToEnd(module.getBody());
+
+    // Create the wrapper function
+    auto linalgFunc = builder.create<func::FuncOp>(linalgOp.getLoc(),
+                                                   "linalg_op_wrapper", funcTy);
+    linalgFunc.setPrivate();
+
+    // Add entry block
+    Block *entryBB = linalgFunc.addEntryBlock();
+    builder.setInsertionPointToEnd(entryBB);
+
+    // Create the linalg::GenericOp with the function arguments as operands
+    auto newLinalgOp = builder.create<linalg::GenericOp>(
+        linalgOp.getLoc(), linalgOpResTy, entryBB->getArguments().drop_back(),
+        entryBB->getArguments().back(), linalgOp.getIndexingMapsArray(),
+        linalgOp.getIteratorTypesArray());
+
+    // Clone the region from the original linalg op
+    IRMapping mapping;
+    linalgOp.getOperation()->getRegion(0).cloneInto(
+        &newLinalgOp.getRegion(), newLinalgOp.getRegion().begin(), mapping);
+
+    // Return the result
+    builder.create<func::ReturnOp>(linalgOp.getLoc(), newLinalgOp.getResults());
+
+    return linalgFunc;
+  }
+
   optional<LinalgOp> getCandidateLinalgOp(func::FuncOp funcOp) {
     using llvm::dbgs;
     auto &region = funcOp.getRegion();
@@ -93,12 +134,11 @@ struct LinalgToPartTensorPass
     if (!linalgOp)
       return failure();
     auto sparseTensorTypes = linalgOp->getOperation()->getOperands().getTypes();
-    auto partTensorTypes = llvm::to_vector(
-        llvm::map_range(sparseTensorTypes,
-                        [&](Type t) -> Type {
-                          return lapis::part_tensor::getPartTensorType(
-                              builder.getContext(), cast<RankedTensorType>(t));
-                        }));
+    auto partTensorTypes =
+        llvm::to_vector(llvm::map_range(sparseTensorTypes, [&](Type t) -> Type {
+          return lapis::part_tensor::getPartTensorType(
+              builder.getContext(), cast<RankedTensorType>(t));
+        }));
     // auto getRankTy =
     //     FunctionType::get(builder.getContext(), {},
     //     {builder.getIndexType()});
@@ -112,12 +152,7 @@ struct LinalgToPartTensorPass
     auto opFunc =
         builder.create<func::FuncOp>(funcOp.getLoc(), "dist_op", opFunctionTy);
     opFunc.setPrivate();
-    IRMapping mapping;
     Block *entryBB = opFunc.addEntryBlock();
-    // for (auto i : llvm::seq<size_t>(0, partTensorTypes.size())) {
-    //   auto arg = entryBB->getArgument(i);
-    //   mapping.map(linalgOp->getOperation()->getOperands()[i], arg);
-    // }
     builder.setInsertionPointToEnd(entryBB);
     auto rank = genGetRankCall(builder, funcOp.getLoc());
     auto memref1dDynTp = MemRefType::get({ShapedType::kDynamic}, indexTp);
@@ -146,38 +181,23 @@ struct LinalgToPartTensorPass
           funcOp.getLoc(), ptVal, arg0partspec,
           Value(builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), i)));
     });
-    // duplicate linalg.generic with new operands
+
+    // Create a temporary linalg op to compute loop ranges
     auto linalgOpResTy = linalgOp->getOperation()->getResultTypes();
-    auto linalgOpResultTypes =
-        llvm::to_vector(llvm::map_range(linalgOpResTy, [&](Type t) -> Type {
-          return lapis::part_tensor::getPartTensorType(
-              builder.getContext(), cast<RankedTensorType>(t));
-        }));
-    auto linalgOpResult = builder.create<linalg::GenericOp>(
-        funcOp.getLoc(), linalgOpResultTypes,
-        entryBB->getArguments().drop_back(), entryBB->getArguments().back(),
-        linalgOp->getIndexingMapsArray(), linalgOp->getIteratorTypesArray());
-    linalgOp->getOperation()->getRegion(0).cloneInto(
-        &linalgOpResult.getRegion(), linalgOpResult.getRegion().begin(),
-        mapping);
-    builder.create<func::ReturnOp>(funcOp.getLoc());
-    builder.setInsertionPoint(linalgOpResult.getOperation());
-    auto extents = llvm::cast<linalg::LinalgOp>(linalgOpResult.getOperation())
+    auto tempLinalgOp = builder.create<linalg::GenericOp>(
+        funcOp.getLoc(), linalgOpResTy, entryBB->getArguments().drop_back(),
+        entryBB->getArguments().back(), linalgOp->getIndexingMapsArray(),
+        linalgOp->getIteratorTypesArray());
+    auto extents = llvm::cast<linalg::LinalgOp>(tempLinalgOp.getOperation())
                        .createLoopRanges(builder, funcOp.getLoc());
+
+    // Compute workload bounds based on the access maps
     auto access0 = linalgOp->getIndexingMapsArray()[0];
-    access0.dump();
-    fmt::println("Access0 number of inputs: {}", access0.getNumInputs());
-    for (auto i : llvm::seq<size_t>(0, access0.getNumResults())) {
-      // fmt::print("{} ", access0.isFunctionOfDim(i));
-      fmt::print("{} ", access0.getDimPosition(i));
-    }
-    fmt::println("");
     auto access0InvPermMap =
         mlir::inverseAndBroadcastProjectedPermutation(access0);
-    access0InvPermMap.dump();
     auto const loopRank = access0.getNumInputs();
     SmallVector<Value> workloadLo(loopRank), workloadHi(loopRank);
-    // generate loads from primaryPartPlan
+
     for (auto i : llvm::seq<size_t>(0, loopRank)) {
       auto expr = access0InvPermMap.getResult(i);
       auto constExpr = dyn_cast<AffineConstantExpr>(expr);
@@ -199,25 +219,11 @@ struct LinalgToPartTensorPass
           builder.create<memref::LoadOp>(indexTp, arg0partspec, arg0Idx);
       auto hiExt =
           builder.create<memref::LoadOp>(indexTp, arg0partspec, arg0HiIdx);
-      workloadLo[i] = (loExt);
-      workloadHi[i] = (hiExt);
+      workloadLo[i] = loExt;
+      workloadHi[i] = hiExt;
     }
-    fmt::println("loopextents: ");
-    for (auto v : extents) {
-      v.size.dump();
-    }
-    fmt::println("workloadLo: ");
-    for (auto v : workloadLo) {
-      v.dump();
-    }
-    fmt::println("workloadHi: ");
-    for (auto v : workloadHi) {
-      v.dump();
-    }
-    fmt::println("IsProjectedPermutation {}",
-                 llvm::all_of(linalgOp->getIndexingMapsArray(), [](auto map) {
-                   return map.isProjectedPermutation();
-                 }));
+
+    // Populate partition specs for all other tensors based on access maps
     for (auto i : llvm::seq<size_t>(1, partSpecs.size())) {
       auto pspec = partSpecs[i];
       auto pspecTp = mlir::cast<MemRefType>(pspec.getType());
@@ -226,19 +232,24 @@ struct LinalgToPartTensorPass
           llvm::cast<RankedTensorType>(entryBB->getArgument(i).getType())
               .getRank();
       auto accessMap = linalgOp->getIndexingMapsArray()[i];
-      for (auto i : llvm::seq<size_t>(0, tensorRank)) {
-        auto expr = accessMap.getResult(i);
+      for (auto j : llvm::seq<size_t>(0, tensorRank)) {
+        auto expr = accessMap.getResult(j);
         auto dim = llvm::cast<AffineDimExpr>(expr).getPosition();
-        Value arg0Idx =
-            builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), i);
-        Value arg0HiIdx = builder.create<arith::ConstantIndexOp>(
-            funcOp.getLoc(), i + tensorRank);
-        builder.create<memref::StoreOp>(funcOp.getLoc(), workloadLo[i], pspec,
-                                        arg0Idx);
-        builder.create<memref::StoreOp>(funcOp.getLoc(), workloadHi[i], pspec,
-                                        arg0HiIdx);
+        Value argIdx =
+            builder.create<arith::ConstantIndexOp>(funcOp.getLoc(), j);
+        Value argHiIdx = builder.create<arith::ConstantIndexOp>(funcOp.getLoc(),
+                                                                j + tensorRank);
+        builder.create<memref::StoreOp>(funcOp.getLoc(), workloadLo[dim], pspec,
+                                        argIdx);
+        builder.create<memref::StoreOp>(funcOp.getLoc(), workloadHi[dim], pspec,
+                                        argHiIdx);
       }
     }
+
+    // Clean up temporary linalg op
+    tempLinalgOp.getOperation()->erase();
+
+    // Extract slices from the partitioned tensors
     SmallVector<Value> slices(partSpecs.size());
     for (auto i : llvm::seq<size_t>(0, partSpecs.size())) {
       auto pspec = partSpecs[i];
@@ -246,22 +257,24 @@ struct LinalgToPartTensorPass
       slices[i] = builder.create<part_tensor::GetSliceOp>(
           funcOp.getLoc(), sparseTensorTypes[i], ptensor, pspec);
     }
-    auto newLinalgOp = builder.create<linalg::GenericOp>(funcOp.getLoc(),
-                                             linalgOpResTy, llvm::ArrayRef(slices).drop_back(), slices.back(),
-                                             linalgOp->getIndexingMapsArray(),
-                                             linalgOp->getIteratorTypesArray());
-    IRMapping mapping1;
-    linalgOp->getOperation()->getRegion(0).cloneInto(
-        &newLinalgOp.getRegion(), newLinalgOp.getRegion().begin(),
-        mapping1);
-    // delete linalgOpResultTypes
+    // Create the linalg wrapper function
+    auto module = funcOp->getParentOfType<ModuleOp>();
+    auto linalgWrapperFunc =
+        createLinalgWrapperFunction(*linalgOp, builder, module);
+
+    // Call the linalg wrapper function with the slices
+    builder.setInsertionPointToEnd(entryBB);
+    auto callOp = builder.create<func::CallOp>(
+        funcOp.getLoc(), linalgWrapperFunc, llvm::ArrayRef(slices));
+
+    // Store the result back into the partitioned tensor
     auto entryBBArgs = entryBB->getArguments();
-    builder.create<part_tensor::SetSliceOp>(
-        funcOp.getLoc(), partTensorTypes.back() , entryBBArgs.back(), partSpecs.back(), newLinalgOp.getResult(0));
-    linalgOpResult.getOperation()->erase();
-    // auto ranges = linalgOp->getLoopsToShapesMap();
-    // fmt::println("LoopsToShapesMap: ");
-    // ranges.dump();
+    auto setSliceOp = builder.create<part_tensor::SetSliceOp>(
+        funcOp.getLoc(), partTensorTypes.back(), entryBBArgs.back(),
+        partSpecs.back(), callOp.getResult(0));
+
+    // Return from the distributed function
+    builder.create<func::ReturnOp>(funcOp.getLoc());
 
     // Let's assume first parameter is going to be primary tensor
     return success();
