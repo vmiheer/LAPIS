@@ -15,7 +15,8 @@ def LinalgToPartTensor : Pass<"linalg-to-parttensor", "ModuleOp"> {
   let constructor = "mlir::createLinalgToPartTensorPass()";
   let dependentDialects = [
     "linalg::LinalgDialect",
-    "sparse_tensor::SparseTensorDialect"
+    "sparse_tensor::SparseTensorDialect",
+    "part_tensor::PartTensorDialect"
   ];
 }
 
